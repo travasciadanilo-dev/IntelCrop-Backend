@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List
+from typing import List, Dict, Any
 import ee
 import json
 import datetime
@@ -25,7 +25,7 @@ except Exception as e:
     raise
 
 class FieldRequest(BaseModel):
-    coordinates: List[List[float]]
+    geojson: Dict[str, Any]
 
 @app.get("/")
 def root():
@@ -61,9 +61,12 @@ def test_gee():
 @app.post("/analyze")
 def analyze_field(req: FieldRequest):
     try:
-        coords = req.coordinates
-        geometry = ee.Geometry.Polygon([coords])
-        fieldGeom = geometry
+        geojson = req.geojson
+        
+        # Estrai la geometria dal GeoJSON (supporta FeatureCollection)
+        # ee.FeatureCollection(geojson).geometry() unisce tutte le geometrie
+        fieldGeom = ee.FeatureCollection(geojson).geometry()
+        
         scale = 10
         cloudThreshold = 0.40
         validPixelThreshold = 10
@@ -73,7 +76,7 @@ def analyze_field(req: FieldRequest):
             ee.Number(endDate.get('year')), 1, 1
         )
 
-        print(f"[INFO] Analisi avviata per area con {len(coords)} coordinate")
+        print(f"[INFO] Analisi avviata per area GeoJSON")
         print(f"[INFO] Periodo: {startDate.getInfo()} - {endDate.getInfo()}")
 
         # Sentinel-2 + Cloud Score+
@@ -399,11 +402,17 @@ def analyze_field(req: FieldRequest):
             # Ottieni l'ultima immagine pulita per gli altri indici
             latestImage = ee.Image(clean.sort('system:time_start', False).first()).clip(fieldGeom)
 
+            # STEP 1: Palette separate per ogni indice
+            eviPalette = ['8b0000', 'ff4500', 'ffd700', '7fff00', '006400']
+            ndmiPalette = ['8b4513', 'd2b48c', 'ffffcc', '7fcdbb', '2c7fb8', '253494']
+            ndrePalette = ['7f0000', 'd7301f', 'fc8d59', 'fee08b', '91cf60', '1a9850']
+            ndviPalette = ['a50026', 'd73027', 'f46d43', 'fee08b', '66bd63', '1a9850', '006837']
+
             # Parametri di visualizzazione dinamici
-            eviVis = getVisParams(latestImage, 'EVI', ['8b0000', 'ff4500', 'ffd700', '7fff00', '006400'])
-            ndmiVis = getVisParams(latestImage, 'NDMI', ['8b4513', 'd2b48c', 'ffffcc', '7fcdbb', '2c7fb8', '253494'])
-            ndreVis = getVisParams(latestImage, 'NDRE', ['7f0000', 'd7301f', 'fc8d59', 'fee08b', '91cf60', '1a9850'])
-            ndviVis = getVisParams(latestImage, 'NDVI', ['a50026', 'd73027', 'f46d43', 'fee08b', '66bd63', '1a9850', '006837'])
+            eviVis = getVisParams(latestImage, 'EVI', eviPalette)
+            ndmiVis = getVisParams(latestImage, 'NDMI', ndmiPalette)
+            ndreVis = getVisParams(latestImage, 'NDRE', ndrePalette)
+            ndviVis = getVisParams(latestImage, 'NDVI', ndviPalette)
 
             priorityMapId = priority.getMapId({
                 'min': 1,
@@ -416,13 +425,13 @@ def analyze_field(req: FieldRequest):
             ndreMapId = latestImage.select('NDRE').getMapId(ndreVis)
             ndviMapId = latestImage.select('NDVI').getMapId(ndviVis)
 
-            # STEP 2-3: Opacità e min/max
+            # STEP 2: MapLayers con palette e legendLabels - OPACITÀ AGGIORNATE
             mapLayers = {
                 "priority": {
                     "name": "Priority Survey Map",
                     "type": "ee_tile",
                     "url": priorityMapId["tile_fetcher"].url_format,
-                    "opacity": 0.65,
+                    "opacity": 0.75,  # MODIFICATO: da 0.65 a 0.75
                     "legend": [
                         {"class": 1, "label": "Normal condition", "color": "#1a9850"},
                         {"class": 2, "label": "Moderate anomaly", "color": "#91cf60"},
@@ -435,37 +444,57 @@ def analyze_field(req: FieldRequest):
                     "name": "EVI",
                     "type": "ee_tile",
                     "url": eviMapId["tile_fetcher"].url_format,
-                    "opacity": 0.42,
+                    "opacity": 0.70,  # MODIFICATO: da 0.42 a 0.70
                     "group": "Vegetation vigor",
                     "min": eviVis["min"],
-                    "max": eviVis["max"]
+                    "max": eviVis["max"],
+                    "palette": eviPalette,
+                    "legendLabels": {
+                        "low": "Low vigor",
+                        "high": "High vigor"
+                    }
                 },
                 "ndmi": {
                     "name": "NDMI",
                     "type": "ee_tile",
                     "url": ndmiMapId["tile_fetcher"].url_format,
-                    "opacity": 0.42,
+                    "opacity": 0.70,  # MODIFICATO: da 0.42 a 0.70
                     "group": "Water status",
                     "min": ndmiVis["min"],
-                    "max": ndmiVis["max"]
+                    "max": ndmiVis["max"],
+                    "palette": ndmiPalette,
+                    "legendLabels": {
+                        "low": "Dry vegetation",
+                        "high": "Moist vegetation"
+                    }
                 },
                 "ndre": {
                     "name": "NDRE",
                     "type": "ee_tile",
                     "url": ndreMapId["tile_fetcher"].url_format,
-                    "opacity": 0.42,
+                    "opacity": 0.70,  # MODIFICATO: da 0.42 a 0.70
                     "group": "Early stress / chlorophyll",
                     "min": ndreVis["min"],
-                    "max": ndreVis["max"]
+                    "max": ndreVis["max"],
+                    "palette": ndrePalette,
+                    "legendLabels": {
+                        "low": "Low chlorophyll",
+                        "high": "High chlorophyll"
+                    }
                 },
                 "ndvi": {
                     "name": "NDVI",
                     "type": "ee_tile",
                     "url": ndviMapId["tile_fetcher"].url_format,
-                    "opacity": 0.42,
+                    "opacity": 0.70,  # MODIFICATO: da 0.42 a 0.70
                     "group": "Standard vegetation index",
                     "min": ndviVis["min"],
-                    "max": ndviVis["max"]
+                    "max": ndviVis["max"],
+                    "palette": ndviPalette,
+                    "legendLabels": {
+                        "low": "Low vegetation",
+                        "high": "High vegetation"
+                    }
                 }
             }
 
