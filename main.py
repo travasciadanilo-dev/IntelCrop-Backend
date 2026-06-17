@@ -6,6 +6,7 @@ import ee
 import json
 import datetime
 import traceback
+from statistics import median
 
 app = FastAPI(title="IntelCrop GEE API")
 
@@ -16,7 +17,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Inizializza GEE - MODIFICATO
+# Inizializza GEE
 try:
     ee.Initialize()
     print("[INFO] Google Earth Engine inizializzato correttamente")
@@ -64,7 +65,6 @@ def analyze_field(req: FieldRequest):
         geojson = req.geojson
         
         # Estrai la geometria dal GeoJSON (supporta FeatureCollection)
-        # ee.FeatureCollection(geojson).geometry() unisce tutte le geometrie
         fieldGeom = ee.FeatureCollection(geojson).geometry()
         
         scale = 10
@@ -122,6 +122,7 @@ def analyze_field(req: FieldRequest):
 
         withDate = indexed.map(addDate)
         
+        # MODIFICA 1: daily semplificato (senza compositi pesanti)
         daily = (withDate
             .map(lambda img: img.set(
                 'system:time_start',
@@ -169,7 +170,6 @@ def analyze_field(req: FieldRequest):
             return (ee.Feature(None, stats)
                 .set('date', ee.Date(img.get('system:time_start')).format('YYYY-MM-dd')))
 
-        # CORREZIONE: conversione esplicita a FeatureCollection
         trendFC = ee.FeatureCollection(clean.map(makeTrendFeature))
         
         try:
@@ -182,8 +182,63 @@ def analyze_field(req: FieldRequest):
             print(f"[WARN] Errore estrazione trend: {str(e)}")
             trendData = []
 
-        # Ultimi 3 per Mahalanobis
-        last3 = clean.sort('system:time_start', False).limit(3)
+        def aggregate_rows_by_date(rows):
+            grouped = {}
+
+            for r in rows:
+                d = r.get("date")
+                if not d:
+                    continue
+                grouped.setdefault(d, []).append(r)
+
+            aggregated = []
+
+            for d, items in grouped.items():
+                out = {"date": d}
+                keys = set()
+                for item in items:
+                    keys.update(item.keys())
+                keys.discard("date")
+
+                for key in keys:
+                    values = [
+                        item.get(key)
+                        for item in items
+                        if item.get(key) is not None
+                    ]
+                    if values:
+                        try:
+                            out[key] = median([float(v) for v in values])
+                        except:
+                            out[key] = values[0]
+                    else:
+                        out[key] = None
+
+                aggregated.append(out)
+
+            return sorted(aggregated, key=lambda x: x["date"])
+
+        trendData = aggregate_rows_by_date(trendData)
+
+        # MODIFICA 3: Ultimi 3 per Mahalanobis - usando date_string uniche con composito
+        last3Dates = ee.List(
+            clean.aggregate_array('date_string')
+        ).distinct().sort().reverse().slice(0, 3)
+
+        def makeLast3DailyComposite(dateStr):
+            dateStr = ee.String(dateStr)
+            dayCollection = clean.filter(ee.Filter.eq('date_string', dateStr))
+
+            return (
+                dayCollection
+                .median()
+                .set('date_string', dateStr)
+                .set('system:time_start', ee.Date(dateStr).millis())
+                .set('image_count_same_day', dayCollection.size())
+            )
+
+        last3 = ee.ImageCollection(last3Dates.map(makeLast3DailyComposite)).sort('system:time_start')
+        
         selectedIndices = ['EVI','NDMI','NDRE','MSI','PSRI']
 
         def robustMahal(img):
@@ -251,10 +306,7 @@ def analyze_field(req: FieldRequest):
         p85 = getPercentile(85)
         p95 = getPercentile(95)
 
-        # ============================================================
-        # DIRECTION SCORE - Direzione agronomica della differenza
-        # ============================================================
-
+        # DIRECTION SCORE
         latestIndexedImage = ee.Image(
             clean.sort('system:time_start', False).first()
         ).clip(fieldGeom)
@@ -291,15 +343,7 @@ def analyze_field(req: FieldRequest):
             .rename('Negative_Response_Score')
         )
 
-        # ============================================================
         # INTELCROP RESPONSE MAP
-        # 1 = Ordinary Zone
-        # 2 = High Performance Zone
-        # 3 = Low-confidence Priority Zone
-        # 4 = Medium-confidence Priority Zone
-        # 5 = High-confidence Priority Zone
-        # ============================================================
-
         negativeCandidate = (
             currentScore.gte(p70)
             .And(negativeScore.gte(3))
@@ -412,7 +456,7 @@ def analyze_field(req: FieldRequest):
             })
 
         # ============================================================
-        # CLASS STATS - Statistiche descrittive per classe Response Map
+        # CLASS STATS
         # ============================================================
 
         statsBands = ['EVI', 'NDMI', 'NDRE', 'MSI', 'PSRI']
@@ -511,7 +555,7 @@ def analyze_field(req: FieldRequest):
                     classStats[cls]["indices"][band]["delta_ref"] = None
 
         # ============================================================
-        # AGRONOMIC CONTEXT - Sintesi strutturata per insight/AI
+        # AGRONOMIC CONTEXT - Calcolo percentuali
         # ============================================================
 
         def getAreaPercent(class_id):
@@ -534,8 +578,202 @@ def analyze_field(req: FieldRequest):
 
         priorityPct = emergingPct + confirmedPct + persistentPct
         confirmedPriorityPct = confirmedPct + persistentPct
-
         priorityHa = getAreaHa(3) + getAreaHa(4) + getAreaHa(5)
+
+        # ============================================================
+        # AGRONOMIC DRIVERS
+        # ============================================================
+
+        def weighted_priority_delta(classStats, band):
+            weighted_sum = 0
+            weight_total = 0
+
+            for cls in ["3", "4", "5"]:
+                cls_stats = classStats.get(cls, {})
+                area_pct = float(cls_stats.get("percent", 0) or 0)
+                delta = cls_stats.get("indices", {}).get(band, {}).get("delta_ref")
+
+                if delta is not None and area_pct > 0:
+                    weighted_sum += float(delta) * area_pct
+                    weight_total += area_pct
+
+            if weight_total == 0:
+                return None
+
+            return round(weighted_sum / weight_total, 4)
+
+        driverBands = ["EVI", "NDMI", "NDRE", "MSI", "PSRI"]
+
+        driverDeltas = {
+            band: weighted_priority_delta(classStats, band)
+            for band in driverBands
+        }
+
+        def driver_strength(band, delta):
+            if delta is None:
+                return 0
+
+            if band in ["EVI", "NDMI", "NDRE"]:
+                return abs(delta) if delta < 0 else 0
+
+            if band in ["MSI", "PSRI"]:
+                return abs(delta) if delta > 0 else 0
+
+            return 0
+
+        rankedDrivers = sorted(
+            [
+                {
+                    "index": band,
+                    "delta_ref": driverDeltas.get(band),
+                    "strength": driver_strength(band, driverDeltas.get(band))
+                }
+                for band in driverBands
+            ],
+            key=lambda x: x["strength"],
+            reverse=True
+        )
+
+        primaryDriver = rankedDrivers[0] if rankedDrivers else None
+        secondaryDriver = rankedDrivers[1] if len(rankedDrivers) > 1 else None
+
+        def interpret_driver(driver):
+            if not driver or driver.get("strength", 0) == 0:
+                return None
+
+            band = driver["index"]
+
+            if band == "EVI":
+                return "vigore vegetativo inferiore rispetto alle zone ordinarie"
+            if band == "NDMI":
+                return "condizione idrica relativamente inferiore nelle zone prioritarie"
+            if band == "NDRE":
+                return "attività clorofilliana relativamente ridotta"
+            if band == "MSI":
+                return "maggiore segnale compatibile con stress idrico"
+            if band == "PSRI":
+                return "maggiore segnale compatibile con senescenza o stress fisiologico"
+
+            return None
+
+        # ============================================================
+        # SIGNAL CONFIDENCE
+        # ============================================================
+
+        def get_signal_confidence(priorityPct, confirmedPriorityPct, persistentPct):
+            if priorityPct < 3:
+                return {
+                    "level": "low",
+                    "label": "Bassa",
+                    "description": (
+                        "Il segnale interessa una superficie limitata. "
+                        "L'interpretazione deve essere considerata preliminare."
+                    )
+                }
+
+            if confirmedPriorityPct >= 5 or persistentPct >= 2:
+                return {
+                    "level": "high",
+                    "label": "Alta",
+                    "description": (
+                        "Il segnale è supportato da una buona estensione spaziale "
+                        "e da conferma temporale nelle osservazioni recenti."
+                    )
+                }
+
+            return {
+                "level": "medium",
+                "label": "Media",
+                "description": (
+                    "Il segnale è presente ma non pienamente consolidato. "
+                    "È consigliabile verificarne la stabilità nelle prossime acquisizioni."
+                )
+            }
+
+        # ============================================================
+        # DOMINANT PROCESS
+        # ============================================================
+
+        def get_dominant_process(primary, secondary):
+            indexes = [
+                primary.get("index") if primary else None,
+                secondary.get("index") if secondary else None
+            ]
+
+            if "MSI" in indexes and "NDMI" in indexes:
+                return {
+                    "code": "water_related",
+                    "label": "Segnale idrico",
+                    "interpretation": (
+                        "Il pattern osservato è compatibile con una differenza idrica "
+                        "localizzata rispetto alle zone ordinarie."
+                    )
+                }
+
+            if "EVI" in indexes and "NDRE" in indexes:
+                return {
+                    "code": "photosynthetic_related",
+                    "label": "Segnale fotosintetico",
+                    "interpretation": (
+                        "Il pattern osservato è compatibile con una riduzione relativa "
+                        "del vigore vegetativo o dell'attività clorofilliana."
+                    )
+                }
+
+            if "PSRI" in indexes:
+                return {
+                    "code": "senescence_related",
+                    "label": "Segnale fisiologico",
+                    "interpretation": (
+                        "Il pattern osservato è compatibile con un maggiore segnale "
+                        "di senescenza o stress fisiologico nelle zone prioritarie."
+                    )
+                }
+
+            return {
+                "code": "mixed_signal",
+                "label": "Segnale misto",
+                "interpretation": (
+                    "Il pattern osservato mostra differenze distribuite su più indici, "
+                    "senza un singolo processo dominante chiaramente prevalente."
+                )
+            }
+
+        # ============================================================
+        # AGRONOMIC DRIVERS - Struttura finale
+        # ============================================================
+
+        signalConfidence = get_signal_confidence(
+            priorityPct,
+            confirmedPriorityPct,
+            persistentPct
+        )
+
+        dominantProcess = get_dominant_process(
+            primaryDriver,
+            secondaryDriver
+        )
+
+        agronomicDrivers = {
+            "deltas": driverDeltas,
+            "ranked": rankedDrivers,
+            "primary": {
+                "index": primaryDriver["index"] if primaryDriver else None,
+                "delta_ref": primaryDriver["delta_ref"] if primaryDriver else None,
+                "interpretation": interpret_driver(primaryDriver)
+            },
+            "secondary": {
+                "index": secondaryDriver["index"] if secondaryDriver else None,
+                "delta_ref": secondaryDriver["delta_ref"] if secondaryDriver else None,
+                "interpretation": interpret_driver(secondaryDriver)
+            },
+            "confidence": signalConfidence,
+            "dominant_process": dominantProcess
+        }
+
+        # ============================================================
+        # AGRONOMIC CONTEXT
+        # ============================================================
 
         if persistentPct >= 5 or priorityPct >= 12:
             agronomicLevel = "elevata"
@@ -556,8 +794,8 @@ def analyze_field(req: FieldRequest):
             "persistent_percent": round(persistentPct, 1),
             "confirmed_priority_percent": round(confirmedPriorityPct, 1),
             "attention_level": agronomicLevel,
-            "vdi_class": None,  # Verrà sovrascritto dopo il calcolo VDI
-            "vdi_score": None,  # Verrà sovrascritto dopo il calcolo VDI
+            "vdi_class": None,
+            "vdi_score": None,
         }
 
         # ============================================================
@@ -587,7 +825,7 @@ def analyze_field(req: FieldRequest):
         }
 
         # ============================================================
-        # VES / VDI - Maschere coerenti con IntelCrop Response Map
+        # VES / VDI
         # ============================================================
 
         latestDate = ee.Date(
@@ -596,12 +834,10 @@ def analyze_field(req: FieldRequest):
         )
         vesStart = latestDate.advance(-60, 'day')
         
-        # Maschere coerenti con IntelCrop Response Map
         referenceMask = priority.eq(1).selfMask()
         priorityInspectionMask = priority.gte(3).selfMask()
         highResponseMask = priority.eq(2).selfMask()
         
-        # Indici usati dalla Priority Survey Map
         vdiBands = ['EVI', 'NDMI', 'NDRE', 'MSI', 'PSRI']
 
         vesCollection = clean.filterDate(vesStart, endDate)
@@ -657,35 +893,30 @@ def analyze_field(req: FieldRequest):
                 .set('date', ee.Date(img.get('system:time_start')).format('YYYY-MM-dd'))
                 .set('system:time_start', img.get('system:time_start'))
 
-                # Zone prioritarie negative (classi 3, 4, 5)
                 .set('priority_EVI', priorityStats.get('EVI'))
                 .set('priority_NDMI', priorityStats.get('NDMI'))
                 .set('priority_NDRE', priorityStats.get('NDRE'))
                 .set('priority_MSI', priorityStats.get('MSI'))
                 .set('priority_PSRI', priorityStats.get('PSRI'))
 
-                # Zone ad alta risposta (classe 2)
                 .set('high_EVI', highResponseStats.get('EVI'))
                 .set('high_NDMI', highResponseStats.get('NDMI'))
                 .set('high_NDRE', highResponseStats.get('NDRE'))
                 .set('high_MSI', highResponseStats.get('MSI'))
                 .set('high_PSRI', highResponseStats.get('PSRI'))
 
-                # Zone ordinarie (classe 1)
                 .set('reference_EVI', referenceStats.get('EVI'))
                 .set('reference_NDMI', referenceStats.get('NDMI'))
                 .set('reference_NDRE', referenceStats.get('NDRE'))
                 .set('reference_MSI', referenceStats.get('MSI'))
                 .set('reference_PSRI', referenceStats.get('PSRI'))
 
-                # Delta: zone prioritarie negative - zone ordinarie
                 .set('delta_EVI', dEVI)
                 .set('delta_NDMI', dNDMI)
                 .set('delta_NDRE', dNDRE)
                 .set('delta_MSI', dMSI)
                 .set('delta_PSRI', dPSRI)
 
-                # Delta: zone ad alta risposta - zone ordinarie
                 .set('delta_high_EVI', dHighEVI)
                 .set('delta_high_NDMI', dHighNDMI)
                 .set('delta_high_NDRE', dHighNDRE)
@@ -693,47 +924,23 @@ def analyze_field(req: FieldRequest):
                 .set('delta_high_PSRI', dHighPSRI)
             )
 
-        # CORREZIONE: conversione esplicita a FeatureCollection
         vesFC = ee.FeatureCollection(vesCollection.map(makeVesFeature))
         
         try:
             vesData = vesFC.select([
                 'date',
-
-                'priority_EVI',
-                'priority_NDMI',
-                'priority_NDRE',
-                'priority_MSI',
-                'priority_PSRI',
-
-                'high_EVI',
-                'high_NDMI',
-                'high_NDRE',
-                'high_MSI',
-                'high_PSRI',
-
-                'reference_EVI',
-                'reference_NDMI',
-                'reference_NDRE',
-                'reference_MSI',
-                'reference_PSRI',
-
-                'delta_EVI',
-                'delta_NDMI',
-                'delta_NDRE',
-                'delta_MSI',
-                'delta_PSRI',
-
-                'delta_high_EVI',
-                'delta_high_NDMI',
-                'delta_high_NDRE',
-                'delta_high_MSI',
-                'delta_high_PSRI'
+                'priority_EVI', 'priority_NDMI', 'priority_NDRE', 'priority_MSI', 'priority_PSRI',
+                'high_EVI', 'high_NDMI', 'high_NDRE', 'high_MSI', 'high_PSRI',
+                'reference_EVI', 'reference_NDMI', 'reference_NDRE', 'reference_MSI', 'reference_PSRI',
+                'delta_EVI', 'delta_NDMI', 'delta_NDRE', 'delta_MSI', 'delta_PSRI',
+                'delta_high_EVI', 'delta_high_NDMI', 'delta_high_NDRE', 'delta_high_MSI', 'delta_high_PSRI'
             ]).getInfo()['features']
             vesData = [f['properties'] for f in vesData]
-            print(f"[INFO] VDI data estratti: {len(vesData)} record")
             
-            # Crea vdiTimeSeries
+            # MODIFICA 2: Aggregazione Python
+            vesData = aggregate_rows_by_date(vesData)
+            print(f"[INFO] VDI data estratti dopo aggregazione giornaliera: {len(vesData)} record")
+            
             vdiTimeSeries = []
             for r in vesData:
                 if r.get('delta_NDMI') is not None:
@@ -752,7 +959,7 @@ def analyze_field(req: FieldRequest):
             vdiTimeSeries = []
 
         # ============================================================
-        # VDI - Vegetation Divergence Index (protetto se priorityPct < 1%)
+        # VDI CALCULATION
         # ============================================================
 
         if priorityPct < 1:
@@ -788,16 +995,13 @@ def analyze_field(req: FieldRequest):
                         'Moderate Divergence'  if vdiScore < 0.006  else
                         'Strong Divergence'
                     )
-
             else:
                 vdiScore = None
                 vdiClass = "Insufficient priority area"
 
-        # Aggiorna agronomicContext con i valori VDI calcolati
         agronomicContext["vdi_class"] = vdiClass
         agronomicContext["vdi_score"] = round(vdiScore, 6) if vdiScore is not None else None
 
-        # CORREZIONE: estrazione sicura dell'ultima data
         lastDateStr = ''
         if trendData:
             dates = [r.get('date', '') for r in trendData if r.get('date')]
@@ -805,10 +1009,9 @@ def analyze_field(req: FieldRequest):
                 lastDateStr = sorted(dates)[-1]
 
         # ============================================================
-        # MAP LAYERS - Earth Engine tile URLs
+        # MAP LAYERS
         # ============================================================
         try:
-            # Funzione per ottenere parametri di visualizzazione con percentili
             def getVisParams(image, band, palette):
                 stats = image.select(band).reduceRegion(
                     reducer=ee.Reducer.percentile([5, 95]),
@@ -826,16 +1029,13 @@ def analyze_field(req: FieldRequest):
                     'palette': palette
                 }
 
-            # Ottieni l'ultima immagine pulita per gli altri indici
             latestImage = ee.Image(clean.sort('system:time_start', False).first()).clip(fieldGeom)
 
-            # STEP 1: Palette separate per ogni indice
             eviPalette = ['8b0000', 'ff4500', 'ffd700', '7fff00', '006400']
             ndmiPalette = ['8b4513', 'd2b48c', 'ffffcc', '7fcdbb', '2c7fb8', '253494']
             ndrePalette = ['7f0000', 'd7301f', 'fc8d59', 'fee08b', '91cf60', '1a9850']
             ndviPalette = ['a50026', 'd73027', 'f46d43', 'fee08b', '66bd63', '1a9850', '006837']
 
-            # Parametri di visualizzazione dinamici
             eviVis = getVisParams(latestImage, 'EVI', eviPalette)
             ndmiVis = getVisParams(latestImage, 'NDMI', ndmiPalette)
             ndreVis = getVisParams(latestImage, 'NDRE', ndrePalette)
@@ -852,7 +1052,6 @@ def analyze_field(req: FieldRequest):
             ndreMapId = latestImage.select('NDRE').getMapId(ndreVis)
             ndviMapId = latestImage.select('NDVI').getMapId(ndviVis)
 
-            # STEP 2: MapLayers con palette e legendLabels - OPACITÀ AGGIORNATE
             mapLayers = {
                 "priority": {
                     "name": "IntelCrop Response Map",
@@ -876,10 +1075,7 @@ def analyze_field(req: FieldRequest):
                     "min": eviVis["min"],
                     "max": eviVis["max"],
                     "palette": eviPalette,
-                    "legendLabels": {
-                        "low": "Low vigor",
-                        "high": "High vigor"
-                    }
+                    "legendLabels": {"low": "Low vigor", "high": "High vigor"}
                 },
                 "ndmi": {
                     "name": "NDMI",
@@ -890,10 +1086,7 @@ def analyze_field(req: FieldRequest):
                     "min": ndmiVis["min"],
                     "max": ndmiVis["max"],
                     "palette": ndmiPalette,
-                    "legendLabels": {
-                        "low": "Dry vegetation",
-                        "high": "Moist vegetation"
-                    }
+                    "legendLabels": {"low": "Dry vegetation", "high": "Moist vegetation"}
                 },
                 "ndre": {
                     "name": "NDRE",
@@ -904,10 +1097,7 @@ def analyze_field(req: FieldRequest):
                     "min": ndreVis["min"],
                     "max": ndreVis["max"],
                     "palette": ndrePalette,
-                    "legendLabels": {
-                        "low": "Low chlorophyll",
-                        "high": "High chlorophyll"
-                    }
+                    "legendLabels": {"low": "Low chlorophyll", "high": "High chlorophyll"}
                 },
                 "ndvi": {
                     "name": "NDVI",
@@ -918,10 +1108,7 @@ def analyze_field(req: FieldRequest):
                     "min": ndviVis["min"],
                     "max": ndviVis["max"],
                     "palette": ndviPalette,
-                    "legendLabels": {
-                        "low": "Low vegetation",
-                        "high": "High vegetation"
-                    }
+                    "legendLabels": {"low": "Low vegetation", "high": "High vegetation"}
                 }
             }
 
@@ -942,6 +1129,7 @@ def analyze_field(req: FieldRequest):
         print(f"[DEBUG] priorityAreas count: {len(priorityAreas)}")
         print(f"[DEBUG] classStats keys: {list(classStats.keys())}")
         print(f"[DEBUG] agronomicContext: {agronomicContext}")
+        print(f"[DEBUG] agronomicDrivers: {agronomicDrivers}")
         print(f"[DEBUG] comparisonContext: {comparisonContext}")
         print(f"[DEBUG] vdiScore: {round(vdiScore, 6) if vdiScore is not None else 'None'}")
         print(f"[DEBUG] vdiClass: {vdiClass}")
@@ -955,13 +1143,14 @@ def analyze_field(req: FieldRequest):
 
         print("[INFO] Analisi completata con successo")
         
-        # JSON finale con compatibilità
+        # JSON FINALE
         return {
             "status": "ok",
             "lastImageDate": lastDateStr,
             "totalArea": round(totalAreaVal / 10000, 2),
             "priorityAreas": priorityAreas,
             "classStats": classStats,
+            "agronomicDrivers": agronomicDrivers,
             "agronomicContext": agronomicContext,
             "comparisonContext": comparisonContext,
             "directionSummary": {
