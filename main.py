@@ -122,7 +122,7 @@ def analyze_field(req: FieldRequest):
 
         withDate = indexed.map(addDate)
         
-        # MODIFICA 1: daily semplificato (senza compositi pesanti)
+        # daily semplificato (senza compositi pesanti)
         daily = (withDate
             .map(lambda img: img.set(
                 'system:time_start',
@@ -220,7 +220,7 @@ def analyze_field(req: FieldRequest):
 
         trendData = aggregate_rows_by_date(trendData)
 
-        # MODIFICA 3: Ultimi 3 per Mahalanobis - usando date_string uniche con composito
+        # Ultimi 3 per Mahalanobis - usando date_string uniche con composito
         last3Dates = ee.List(
             clean.aggregate_array('date_string')
         ).distinct().sort().reverse().slice(0, 3)
@@ -293,8 +293,16 @@ def analyze_field(req: FieldRequest):
         classified = anomaly.map(classifyAnom)
         persistence = classified.select('anomaly_mask').sum().rename('Persistence')
 
-        currentScore = (ee.Image(anomaly.sort('system:time_start', False).first())
-                        .select('Mahalanobis_Score').clip(fieldGeom))
+        # MODIFICA 1: currentScore con latestAnomalyImage e latestResponseImage
+        latestAnomalyImage = ee.Image(
+            anomaly.sort('system:time_start', False).first()
+        ).clip(fieldGeom)
+
+        latestResponseImage = ee.Image(
+            last3.sort('system:time_start', False).first()
+        ).clip(fieldGeom)
+
+        currentScore = latestAnomalyImage.select('Mahalanobis_Score')
 
         def getPercentile(p):
             return ee.Number(currentScore.reduceRegion(
@@ -306,11 +314,7 @@ def analyze_field(req: FieldRequest):
         p85 = getPercentile(85)
         p95 = getPercentile(95)
 
-        # DIRECTION SCORE
-        latestIndexedImage = ee.Image(
-            clean.sort('system:time_start', False).first()
-        ).clip(fieldGeom)
-
+        # DIRECTION SCORE - MODIFICA 2: usa latestResponseImage
         def getMedianValue(image, band):
             return ee.Number(image.select(band).reduceRegion(
                 reducer=ee.Reducer.median(),
@@ -319,27 +323,27 @@ def analyze_field(req: FieldRequest):
                 maxPixels=1e9
             ).get(band))
 
-        medEVI = getMedianValue(latestIndexedImage, 'EVI')
-        medNDMI = getMedianValue(latestIndexedImage, 'NDMI')
-        medNDRE = getMedianValue(latestIndexedImage, 'NDRE')
-        medMSI = getMedianValue(latestIndexedImage, 'MSI')
-        medPSRI = getMedianValue(latestIndexedImage, 'PSRI')
+        medEVI = getMedianValue(latestResponseImage, 'EVI')
+        medNDMI = getMedianValue(latestResponseImage, 'NDMI')
+        medNDRE = getMedianValue(latestResponseImage, 'NDRE')
+        medMSI = getMedianValue(latestResponseImage, 'MSI')
+        medPSRI = getMedianValue(latestResponseImage, 'PSRI')
 
         positiveScore = (
-            latestIndexedImage.select('EVI').gt(medEVI)
-            .add(latestIndexedImage.select('NDMI').gt(medNDMI))
-            .add(latestIndexedImage.select('NDRE').gt(medNDRE))
-            .add(latestIndexedImage.select('MSI').lt(medMSI))
-            .add(latestIndexedImage.select('PSRI').lt(medPSRI))
+            latestResponseImage.select('EVI').gt(medEVI)
+            .add(latestResponseImage.select('NDMI').gt(medNDMI))
+            .add(latestResponseImage.select('NDRE').gt(medNDRE))
+            .add(latestResponseImage.select('MSI').lt(medMSI))
+            .add(latestResponseImage.select('PSRI').lt(medPSRI))
             .rename('Positive_Response_Score')
         )
 
         negativeScore = (
-            latestIndexedImage.select('EVI').lt(medEVI)
-            .add(latestIndexedImage.select('NDMI').lt(medNDMI))
-            .add(latestIndexedImage.select('NDRE').lt(medNDRE))
-            .add(latestIndexedImage.select('MSI').gt(medMSI))
-            .add(latestIndexedImage.select('PSRI').gt(medPSRI))
+            latestResponseImage.select('EVI').lt(medEVI)
+            .add(latestResponseImage.select('NDMI').lt(medNDMI))
+            .add(latestResponseImage.select('NDRE').lt(medNDRE))
+            .add(latestResponseImage.select('MSI').gt(medMSI))
+            .add(latestResponseImage.select('PSRI').gt(medPSRI))
             .rename('Negative_Response_Score')
         )
 
@@ -456,7 +460,7 @@ def analyze_field(req: FieldRequest):
             })
 
         # ============================================================
-        # CLASS STATS
+        # CLASS STATS - MODIFICA 3: usa latestResponseImage
         # ============================================================
 
         statsBands = ['EVI', 'NDMI', 'NDRE', 'MSI', 'PSRI']
@@ -471,7 +475,7 @@ def analyze_field(req: FieldRequest):
 
         classStats = {}
 
-        latestStatsImage = latestIndexedImage.select(statsBands)
+        latestStatsImage = latestResponseImage.select(statsBands)
 
         for cls in [1, 2, 3, 4, 5]:
             classMask = priority.eq(cls).selfMask()
@@ -937,7 +941,6 @@ def analyze_field(req: FieldRequest):
             ]).getInfo()['features']
             vesData = [f['properties'] for f in vesData]
             
-            # MODIFICA 2: Aggregazione Python
             vesData = aggregate_rows_by_date(vesData)
             print(f"[INFO] VDI data estratti dopo aggregazione giornaliera: {len(vesData)} record")
             
@@ -1009,7 +1012,7 @@ def analyze_field(req: FieldRequest):
                 lastDateStr = sorted(dates)[-1]
 
         # ============================================================
-        # MAP LAYERS
+        # MAP LAYERS - MODIFICA 4: usa latestResponseImage
         # ============================================================
         try:
             def getVisParams(image, band, palette):
@@ -1029,7 +1032,7 @@ def analyze_field(req: FieldRequest):
                     'palette': palette
                 }
 
-            latestImage = ee.Image(clean.sort('system:time_start', False).first()).clip(fieldGeom)
+            latestImage = latestResponseImage
 
             eviPalette = ['8b0000', 'ff4500', 'ffd700', '7fff00', '006400']
             ndmiPalette = ['8b4513', 'd2b48c', 'ffffcc', '7fcdbb', '2c7fb8', '253494']
