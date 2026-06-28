@@ -122,13 +122,29 @@ def analyze_field(req: FieldRequest):
 
         withDate = indexed.map(addDate)
         
-        # daily semplificato (senza compositi pesanti)
-        daily = (withDate
-            .map(lambda img: img.set(
-                'system:time_start',
-                ee.Date(img.get('date_string')).millis()
-            ))
-            .sort('system:time_start'))
+        # ============================================================
+        # DAILY COMPOSITE
+        # ============================================================
+        # 1. Estrai tutte le date uniche
+        uniqueDates = ee.List(
+            withDate.aggregate_array('date_string')
+        ).distinct().sort()
+
+        # 2. Definisci la funzione per creare il composito giornaliero
+        def makeDailyComposite(dateStr):
+            dateStr = ee.String(dateStr)
+            dayCollection = withDate.filter(ee.Filter.eq('date_string', dateStr))
+
+            return (
+                dayCollection
+                .median()  # Usa la mediana per ridurre il rumore
+                .set('date_string', dateStr)
+                .set('system:time_start', ee.Date(dateStr).millis())
+                .set('image_count_same_day', dayCollection.size())
+            )
+
+        # 3. Crea l'ImageCollection giornaliera
+        daily = ee.ImageCollection(uniqueDates.map(makeDailyComposite)).sort('system:time_start')
 
         def addValidPercent(img):
             v = (ee.Number(img.select('NDVI').mask()
@@ -293,7 +309,7 @@ def analyze_field(req: FieldRequest):
         classified = anomaly.map(classifyAnom)
         persistence = classified.select('anomaly_mask').sum().rename('Persistence')
 
-        # MODIFICA 1: currentScore con latestAnomalyImage e latestResponseImage
+        # currentScore con latestAnomalyImage e latestResponseImage
         latestAnomalyImage = ee.Image(
             anomaly.sort('system:time_start', False).first()
         ).clip(fieldGeom)
@@ -314,7 +330,7 @@ def analyze_field(req: FieldRequest):
         p85 = getPercentile(85)
         p95 = getPercentile(95)
 
-        # DIRECTION SCORE - MODIFICA 2: usa latestResponseImage
+        # DIRECTION SCORE - usa latestResponseImage
         def getMedianValue(image, band):
             return ee.Number(image.select(band).reduceRegion(
                 reducer=ee.Reducer.median(),
@@ -460,7 +476,7 @@ def analyze_field(req: FieldRequest):
             })
 
         # ============================================================
-        # CLASS STATS - MODIFICA 3: usa latestResponseImage
+        # CLASS STATS - usa latestResponseImage
         # ============================================================
 
         statsBands = ['EVI', 'NDMI', 'NDRE', 'MSI', 'PSRI']
@@ -1012,7 +1028,7 @@ def analyze_field(req: FieldRequest):
                 lastDateStr = sorted(dates)[-1]
 
         # ============================================================
-        # MAP LAYERS - MODIFICA 4: usa latestResponseImage
+        # MAP LAYERS
         # ============================================================
         try:
             def getVisParams(image, band, palette):
@@ -1120,6 +1136,35 @@ def analyze_field(req: FieldRequest):
             print(f"[WARN] Errore generazione map layer: {str(e)}")
             mapLayers = {}
 
+        # ============================================================
+        # STATIC MAP SNAPSHOTS FOR REPORT
+        # ============================================================
+        try:
+            thumbParamsBase = {
+                "region": fieldGeom,
+                "dimensions": 900,
+                "format": "png"
+            }
+
+            mapSnapshots = {
+                "priority": priority.visualize(
+                    min=1,
+                    max=5,
+                    palette=['91cf60', '1a9850', 'fee08b', 'fc8d59', 'd73027']
+                ).getThumbURL(thumbParamsBase),
+
+                "evi": latestImage.select('EVI').visualize(**eviVis).getThumbURL(thumbParamsBase),
+                "ndmi": latestImage.select('NDMI').visualize(**ndmiVis).getThumbURL(thumbParamsBase),
+                "ndre": latestImage.select('NDRE').visualize(**ndreVis).getThumbURL(thumbParamsBase),
+                "ndvi": latestImage.select('NDVI').visualize(**ndviVis).getThumbURL(thumbParamsBase),
+            }
+
+            print("[INFO] Map snapshots generati per report")
+
+        except Exception as e:
+            print(f"[WARN] Errore generazione map snapshots: {str(e)}")
+            mapSnapshots = {}
+
         # DEBUG PRINT
         print("=" * 60)
         print("[DEBUG] RIEPILOGO ANALISI COMPLETATA")
@@ -1168,16 +1213,11 @@ def analyze_field(req: FieldRequest):
                 "class": vdiClass,
                 "window_days": 60,
             },
-            "ves": {
-                "score": round(vdiScore, 6) if vdiScore is not None else None,
-                "class": vdiClass,
-                "window_days": 60,
-            },
             "trendData": trendData,
             "vdiData": vesData,
-            "vesData": vesData,
             "vdiTimeSeries": vdiTimeSeries,
             "mapLayers": mapLayers,
+            "mapSnapshots": mapSnapshots,
         }
 
     except HTTPException:
