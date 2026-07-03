@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+earthengine-api
+pydantic
+scipy
+numpy
+python-dotenv
+pytest
