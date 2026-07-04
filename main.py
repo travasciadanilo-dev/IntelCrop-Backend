@@ -42,8 +42,9 @@ F18 - Validazione contratto NON bloccante (warning + flag)
 
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
+from schemas import AnalysisResultContract
 import ee
 import json
 import datetime
@@ -103,6 +104,22 @@ MAX_FIELD_AREA_HA = float(os.getenv("MAX_FIELD_AREA_HA", "100"))
 MIN_FIELD_AREA_HA = float(os.getenv("MIN_FIELD_AREA_HA", "0.05"))
 ANALYZE_RATE_LIMIT_PER_HOUR = int(os.getenv("ANALYZE_RATE_LIMIT_PER_HOUR", "30"))
 
+# Profili di analisi e controlli condizionali
+ANALYSIS_PROFILE = os.getenv("ANALYSIS_PROFILE", "operational_fast")
+
+COMPUTE_FIELD_SIGNIFICANCE = os.getenv("COMPUTE_FIELD_SIGNIFICANCE", "false").lower() == "true"
+COMPUTE_VDI = os.getenv("COMPUTE_VDI", "false").lower() == "true"
+
+GENERATE_RESPONSE_MAP_LAYER = os.getenv("GENERATE_RESPONSE_MAP_LAYER", "true").lower() == "true"
+GENERATE_INDEX_MAP_LAYERS = os.getenv("GENERATE_INDEX_MAP_LAYERS", "false").lower() == "true"
+GENERATE_MAP_SNAPSHOTS = os.getenv("GENERATE_MAP_SNAPSHOTS", "false").lower() == "true"
+
+DEBUG_ANALYSIS = os.getenv("DEBUG_ANALYSIS", "false").lower() == "true"
+ANALYSIS_TIMING = os.getenv("ANALYSIS_TIMING", "true").lower() == "true"
+
+# Step 3: Aggiungi configurazione per la validazione del contratto
+CONTRACT_VALIDATION_MODE = os.getenv("CONTRACT_VALIDATION_MODE", "warn").lower()
+
 # F13: Rate limit state
 RATE_LIMIT_STATE = {}
 RATE_LIMIT_WINDOW_SECONDS = 3600
@@ -153,179 +170,6 @@ class FieldRequest(BaseModel):
     apply_spatial_smoothing: bool = True
     covariance_shrinkage: float = 0.15
     robust_covariance_iterations: int = 2
-
-
-# ================================================================
-# F14 + F15: CONTRATTO DATI TIPIZZATO - RESPONSE SCHEMAS (Pydantic v2)
-# ================================================================
-
-class PriorityArea(BaseModel):
-    class_id: int = Field(alias="class")
-    label: str
-    color: str
-    area_ha: float
-    percent: float
-
-    model_config = ConfigDict(populate_by_name=True)
-
-
-class AnalysisStatus(BaseModel):
-    code: str
-    label: str
-    severity: str
-    color: str
-    description: str
-    recommended_action: str
-
-    model_config = ConfigDict(populate_by_name=True)
-
-
-class AnalysisReliability(BaseModel):
-    level: str
-    label: str
-    reasons: List[str]
-    note: str
-
-    model_config = ConfigDict(populate_by_name=True)
-
-
-class FieldSignificance(BaseModel):
-    applicable: bool
-    p_value: Optional[float] = None
-    significant: Optional[bool] = None
-    expected_false_positive_rate: Optional[float] = None
-    observed_rate: Optional[float] = None
-    n_anomalous_pixels: Optional[int] = None
-    n_anomalous_effective_pixels: Optional[int] = None
-    n_total_pixels: Optional[int] = None
-    n_effective_pixels: Optional[int] = None
-    spatial_independence_assumed: Optional[bool] = None
-    note: Optional[str] = None
-
-    model_config = ConfigDict(populate_by_name=True)
-
-
-class MultivariateNormalityFlag(BaseModel):
-    reliable: bool
-    flagged_components: List[str] = []
-    skewness: List[Optional[float]] = []
-    excess_kurtosis: List[Optional[float]] = []
-    note: Optional[str] = None
-
-    model_config = ConfigDict(populate_by_name=True)
-
-
-class VDIResult(BaseModel):
-    score: Optional[float] = None
-    class_name: Optional[str] = Field(default=None, alias="class")
-    window_days: Optional[int] = None
-    r_squared: Optional[float] = None
-    confidence: Optional[str] = None
-    t_statistic: Optional[float] = None
-    n_observations: Optional[int] = None
-    n_effective: Optional[float] = None
-    lag1_autocorrelation: Optional[float] = None
-
-    model_config = ConfigDict(populate_by_name=True)
-
-
-class MapLayerLegendItem(BaseModel):
-    class_id: Optional[int] = Field(default=None, alias="class")
-    label: str
-    color: str
-
-    model_config = ConfigDict(populate_by_name=True)
-
-
-class MapLayerLegendLabels(BaseModel):
-    low: Optional[str] = None
-    high: Optional[str] = None
-
-    model_config = ConfigDict(populate_by_name=True)
-
-
-class MapLayer(BaseModel):
-    name: str
-    type: str
-    url: str
-    opacity: Optional[float] = None
-    group: Optional[str] = None
-    min: Optional[float] = None
-    max: Optional[float] = None
-    palette: Optional[List[str]] = None
-    legend: Optional[List[MapLayerLegendItem]] = None
-    legendLabels: Optional[MapLayerLegendLabels] = None
-
-    model_config = ConfigDict(populate_by_name=True)
-
-
-class MapSnapshots(BaseModel):
-    priority: Optional[str] = None
-    evi: Optional[str] = None
-    ndmi: Optional[str] = None
-    ndre: Optional[str] = None
-    ndvi: Optional[str] = None
-
-    model_config = ConfigDict(populate_by_name=True)
-
-
-class AgronomicContext(BaseModel):
-    ordinary_percent: float
-    high_performance_percent: float
-    priority_percent: float
-    priority_area_ha: float
-    emerging_percent: float
-    confirmed_percent: float
-    persistent_percent: float
-    confirmed_priority_percent: float
-    attention_level: str
-    vdi_class: Optional[str] = None
-    vdi_score: Optional[float] = None
-
-    model_config = ConfigDict(populate_by_name=True)
-
-
-class AnomalyThreshold(BaseModel):
-    mahalanobis_threshold: Optional[float] = None
-    threshold: Optional[float] = None
-    mahalanobis_alpha: Optional[float] = None
-    alpha: Optional[float] = None
-    df: Optional[int] = None
-    method: Optional[str] = None
-    note: Optional[str] = None
-    warning: Optional[str] = None
-
-    model_config = ConfigDict(extra="allow")
-
-
-class DataQuality(BaseModel):
-    temporally_consistent: Optional[bool] = None
-    last3_gap_days: Optional[int] = None
-    last3_gap_warning_days: Optional[int] = None
-    valid_observations: Optional[int] = None
-
-    model_config = ConfigDict(populate_by_name=True)
-
-
-class AnalysisResultContract(BaseModel):
-    totalArea: float
-    lastImageDate: Optional[str] = None
-    priorityAreas: List[PriorityArea]
-    analysisStatus: AnalysisStatus
-    analysisReliability: AnalysisReliability
-    fieldSignificance: FieldSignificance
-    multivariateNormalityFlag: MultivariateNormalityFlag
-    vdi: Optional[VDIResult] = None
-    agronomicContext: AgronomicContext
-    anomalyThreshold: Optional[AnomalyThreshold] = None
-    dataQuality: Optional[DataQuality] = None
-    mapLayers: Optional[Dict[str, MapLayer]] = None
-    mapSnapshots: Optional[MapSnapshots] = None
-
-    model_config = ConfigDict(
-        populate_by_name=True,
-        extra="allow"
-    )
 
 
 @app.get("/")
@@ -1061,12 +905,96 @@ def build_analysis_status(priority_pct: float,
 
 
 # ================================================================
+# HELPER TIMING LOG
+# ================================================================
+
+def timing_log(request_id: str, label: str, start_time: float) -> float:
+    """
+    Log leggero dei tempi di esecuzione per individuare i colli di bottiglia.
+    """
+    if ANALYSIS_TIMING:
+        elapsed = time.time() - start_time
+        print(f"[TIMING] request_id={request_id} step='{label}' elapsed={elapsed:.2f}s")
+
+    return time.time()
+
+
+# ================================================================
+# STEP 4: VALIDAZIONE CONTRATTO DATI
+# ================================================================
+
+def validate_analysis_result_contract_or_raise(
+    result: Dict[str, Any],
+    request_id: str,
+    auth_id: str,
+    geom_hash: str
+) -> Dict[str, Any]:
+    """
+    Valida il contratto dati della risposta /analyze.
+
+    CONTRACT_VALIDATION_MODE:
+    - off: nessuna validazione
+    - warn: logga warning ma non blocca /analyze
+    - strict: blocca /analyze se il payload non rispetta il contratto
+    """
+    if CONTRACT_VALIDATION_MODE == "off":
+        result["contractValidation"] = {
+            "valid": None,
+            "mode": "off"
+        }
+        return result
+
+    try:
+        AnalysisResultContract.model_validate(result)
+
+        result["contractValidation"] = {
+            "valid": True,
+            "mode": CONTRACT_VALIDATION_MODE
+        }
+
+        return result
+
+    except Exception as contract_error:
+        contract_error_id = str(uuid.uuid4())[:8]
+
+        print("=" * 80)
+        print(f"[WARN] analysis_contract_validation_failed error_id={contract_error_id}")
+        print(str(contract_error))
+        print("[DEBUG] Result keys:", list(result.keys()) if isinstance(result, dict) else type(result))
+        print("=" * 80)
+
+        audit_log(
+            "analysis_contract_validation_failed",
+            request_id=request_id,
+            auth_id=auth_id,
+            geometry_hash=geom_hash,
+            error_id=contract_error_id,
+            mode=CONTRACT_VALIDATION_MODE
+        )
+
+        result["contractValidation"] = {
+            "valid": False,
+            "mode": CONTRACT_VALIDATION_MODE,
+            "error_id": contract_error_id
+        }
+
+        if CONTRACT_VALIDATION_MODE == "strict":
+            raise HTTPException(
+                status_code=500,
+                detail=f"Errore interno nella validazione del contratto dati. Codice errore: {contract_error_id}"
+            )
+
+        return result
+
+
+# ================================================================
 # ANALISI PRINCIPALE
 # ================================================================
 
 @app.post("/analyze")
 def analyze_field(req: FieldRequest, auth_id: str = Depends(verify_api_key)):
     request_id = str(uuid.uuid4())[:8]
+    stage_time = time.time()
 
     try:
         geojson = req.geojson
@@ -1084,7 +1012,8 @@ def analyze_field(req: FieldRequest, auth_id: str = Depends(verify_api_key)):
             request_id=request_id,
             auth_id=auth_id,
             geometry_hash=geom_hash,
-            input_area_ha=round(input_area_ha, 4)
+            input_area_ha=round(input_area_ha, 4),
+            analysis_profile=ANALYSIS_PROFILE
         )
 
         fieldGeom = ee.FeatureCollection(geojson).geometry()
@@ -1102,6 +1031,7 @@ def analyze_field(req: FieldRequest, auth_id: str = Depends(verify_api_key)):
         startDate = ee.Date.fromYMD(ee.Number(endDate.get('year')), 1, 1)
 
         print(f"[INFO] Analisi avviata per area GeoJSON")
+        print(f"[INFO] Profilo: {ANALYSIS_PROFILE}")
         print(f"[INFO] Periodo: {startDate.getInfo()} - {endDate.getInfo()}")
         print(f"[INFO] Soglie qualita' dato: cloud_threshold={cloudThreshold}, valid_pixel_threshold={validPixelThreshold}")
         print(f"[INFO] Parametri statistici: mahal_alpha={mahalAlpha}, min_cluster_pixels={minClusterPixels}, "
@@ -1189,6 +1119,7 @@ def analyze_field(req: FieldRequest, auth_id: str = Depends(verify_api_key)):
 
         cleanSize = clean.size().getInfo()
         print(f"[INFO] Immagini trovate dopo filtri: {cleanSize}")
+        stage_time = timing_log(request_id, "sentinel_images_filtered", stage_time)
 
         if cleanSize == 0:
             raise HTTPException(
@@ -1220,6 +1151,8 @@ def analyze_field(req: FieldRequest, auth_id: str = Depends(verify_api_key)):
         except Exception as e:
             print(f"[WARN] Errore estrazione trend: {str(e)}")
             trendData = []
+
+        stage_time = timing_log(request_id, "trend_data_extracted", stage_time)
 
         def aggregate_rows_by_date(rows):
             grouped = {}
@@ -1431,6 +1364,7 @@ def analyze_field(req: FieldRequest, auth_id: str = Depends(verify_api_key)):
         MAHAL_THRESHOLD = hotelling_threshold(nValidPixels, MAHAL_DF, mahalAlpha, field_area_ha)
         print(f"[INFO] Pixel validi per covarianza: {nValidPixels}")
         print(f"[INFO] Soglia Mahalanobis (Hotelling T^2 corretta): {MAHAL_THRESHOLD:.4f}")
+        stage_time = timing_log(request_id, "mahalanobis_threshold_computed", stage_time)
 
         # ============================================================
         # DIAGNOSTICA NORMALITA' MULTIVARIATA
@@ -1602,17 +1536,38 @@ def analyze_field(req: FieldRequest, auth_id: str = Depends(verify_api_key)):
             })
 
         # ============================================================
-        # SIGNIFICATIVITA' A LIVELLO DI CAMPO (I2 + F1 + F9)
+        # SIGNIFICATIVITA' A LIVELLO DI CAMPO (I2 + F1 + F9) - CONDIZIONALE
         # ============================================================
         totalPixelsApprox = int(round(totalAreaVal / (scale * scale)))
         anomalousAreaM2 = sum(g['sum'] for g in areaGroups if int(g['priority_class']) >= 3)
         anomalousPixelsApprox = int(round(anomalousAreaM2 / (scale * scale)))
+        
+        # Calcola il tasso di falsi positivi atteso per il placeholder
+        expected_false_positive_rate = (1.0 - mahalAlpha) * 0.5
 
-        fieldSignificance = field_level_significance(
-            anomalousPixelsApprox, totalPixelsApprox, mahalAlpha,
-            field_area_ha=field_area_ha, one_sided_fraction=0.5
-        )
-        print(f"[INFO] Significativita' a livello di campo: {fieldSignificance}")
+        if COMPUTE_FIELD_SIGNIFICANCE:
+            fieldSignificance = field_level_significance(
+                anomalousPixelsApprox, totalPixelsApprox, mahalAlpha,
+                field_area_ha=field_area_ha, one_sided_fraction=0.5
+            )
+            print(f"[INFO] Significativita' a livello di campo: {fieldSignificance}")
+        else:
+            fieldSignificance = {
+                "applicable": False,
+                "p_value": None,
+                "significant": None,
+                "expected_false_positive_rate": round(expected_false_positive_rate, 4),
+                "observed_rate": round(anomalousPixelsApprox / totalPixelsApprox, 4) if totalPixelsApprox else None,
+                "n_anomalous_pixels": int(anomalousPixelsApprox) if anomalousPixelsApprox is not None else 0,
+                "n_anomalous_effective_pixels": None,
+                "n_total_pixels": int(totalPixelsApprox) if totalPixelsApprox is not None else 0,
+                "n_effective_pixels": None,
+                "spatial_independence_assumed": False,
+                "note": "Test di significatività a livello di campo non calcolato in modalità operational_fast. La classificazione satellitare resta disponibile; la significatività statistica completa può essere calcolata in modalità scientific_full."
+            }
+            print("[INFO] Significativita' campo disattivata in operational_fast")
+
+        stage_time = timing_log(request_id, "field_significance_step", stage_time)
 
         # ============================================================
         # AFFIDABILITA' CANONICA (F5)
@@ -1942,158 +1897,191 @@ def analyze_field(req: FieldRequest, auth_id: str = Depends(verify_api_key)):
         }
 
         # ============================================================
-        # VDI - VEGETATION DIVERGENCE INDEX
+        # VDI - VEGETATION DIVERGENCE INDEX (CONDIZIONALE)
         # ============================================================
-        latestDate = ee.Date(ee.Image(clean.sort('system:time_start', False).first()).get('system:time_start'))
-        vesStart = latestDate.advance(-60, 'day')
+        if COMPUTE_VDI:
+            latestDate = ee.Date(ee.Image(clean.sort('system:time_start', False).first()).get('system:time_start'))
+            vesStart = latestDate.advance(-60, 'day')
 
-        referenceMask = priority.eq(1).selfMask()
-        priorityInspectionMask = priority.gte(3).selfMask()
-        highResponseMask = priority.eq(2).selfMask()
+            referenceMask = priority.eq(1).selfMask()
+            priorityInspectionMask = priority.gte(3).selfMask()
+            highResponseMask = priority.eq(2).selfMask()
 
-        vdiBands = ['EVI', 'NDMI', 'NDRE', 'MSI', 'PSRI']
-        vesCollection = clean.filterDate(vesStart, endDate)
+            vdiBands = ['EVI', 'NDMI', 'NDRE', 'MSI', 'PSRI']
+            vesCollection = clean.filterDate(vesStart, endDate)
 
-        def safeDelta(a, b):
-            return ee.Algorithms.If(
-                ee.Algorithms.IsEqual(a, None), None,
-                ee.Algorithms.If(ee.Algorithms.IsEqual(b, None), None, ee.Number(a).subtract(ee.Number(b)))
-            )
+            def safeDelta(a, b):
+                return ee.Algorithms.If(
+                    ee.Algorithms.IsEqual(a, None), None,
+                    ee.Algorithms.If(ee.Algorithms.IsEqual(b, None), None, ee.Number(a).subtract(ee.Number(b)))
+                )
 
-        def makeVesFeature(img):
-            img = ee.Image(img)
-            referenceStats = img.select(vdiBands).updateMask(referenceMask).reduceRegion(
-                reducer=ee.Reducer.median(), geometry=fieldGeom, scale=scale, maxPixels=1e9)
-            highResponseStats = img.select(vdiBands).updateMask(highResponseMask).reduceRegion(
-                reducer=ee.Reducer.median(), geometry=fieldGeom, scale=scale, maxPixels=1e9)
-            priorityStats = img.select(vdiBands).updateMask(priorityInspectionMask).reduceRegion(
-                reducer=ee.Reducer.median(), geometry=fieldGeom, scale=scale, maxPixels=1e9)
+            def makeVesFeature(img):
+                img = ee.Image(img)
+                referenceStats = img.select(vdiBands).updateMask(referenceMask).reduceRegion(
+                    reducer=ee.Reducer.median(), geometry=fieldGeom, scale=scale, maxPixels=1e9)
+                highResponseStats = img.select(vdiBands).updateMask(highResponseMask).reduceRegion(
+                    reducer=ee.Reducer.median(), geometry=fieldGeom, scale=scale, maxPixels=1e9)
+                priorityStats = img.select(vdiBands).updateMask(priorityInspectionMask).reduceRegion(
+                    reducer=ee.Reducer.median(), geometry=fieldGeom, scale=scale, maxPixels=1e9)
 
-            dEVI = safeDelta(priorityStats.get('EVI'), referenceStats.get('EVI'))
-            dNDMI = safeDelta(priorityStats.get('NDMI'), referenceStats.get('NDMI'))
-            dNDRE = safeDelta(priorityStats.get('NDRE'), referenceStats.get('NDRE'))
-            dMSI = safeDelta(priorityStats.get('MSI'), referenceStats.get('MSI'))
-            dPSRI = safeDelta(priorityStats.get('PSRI'), referenceStats.get('PSRI'))
+                dEVI = safeDelta(priorityStats.get('EVI'), referenceStats.get('EVI'))
+                dNDMI = safeDelta(priorityStats.get('NDMI'), referenceStats.get('NDMI'))
+                dNDRE = safeDelta(priorityStats.get('NDRE'), referenceStats.get('NDRE'))
+                dMSI = safeDelta(priorityStats.get('MSI'), referenceStats.get('MSI'))
+                dPSRI = safeDelta(priorityStats.get('PSRI'), referenceStats.get('PSRI'))
 
-            dHighEVI = safeDelta(highResponseStats.get('EVI'), referenceStats.get('EVI'))
-            dHighNDMI = safeDelta(highResponseStats.get('NDMI'), referenceStats.get('NDMI'))
-            dHighNDRE = safeDelta(highResponseStats.get('NDRE'), referenceStats.get('NDRE'))
-            dHighMSI = safeDelta(highResponseStats.get('MSI'), referenceStats.get('MSI'))
-            dHighPSRI = safeDelta(highResponseStats.get('PSRI'), referenceStats.get('PSRI'))
+                dHighEVI = safeDelta(highResponseStats.get('EVI'), referenceStats.get('EVI'))
+                dHighNDMI = safeDelta(highResponseStats.get('NDMI'), referenceStats.get('NDMI'))
+                dHighNDRE = safeDelta(highResponseStats.get('NDRE'), referenceStats.get('NDRE'))
+                dHighMSI = safeDelta(highResponseStats.get('MSI'), referenceStats.get('MSI'))
+                dHighPSRI = safeDelta(highResponseStats.get('PSRI'), referenceStats.get('PSRI'))
 
-            return (ee.Feature(None)
-                .set('date', ee.Date(img.get('system:time_start')).format('YYYY-MM-dd'))
-                .set('system:time_start', img.get('system:time_start'))
-                .set('priority_EVI', priorityStats.get('EVI'))
-                .set('priority_NDMI', priorityStats.get('NDMI'))
-                .set('priority_NDRE', priorityStats.get('NDRE'))
-                .set('priority_MSI', priorityStats.get('MSI'))
-                .set('priority_PSRI', priorityStats.get('PSRI'))
-                .set('high_EVI', highResponseStats.get('EVI'))
-                .set('high_NDMI', highResponseStats.get('NDMI'))
-                .set('high_NDRE', highResponseStats.get('NDRE'))
-                .set('high_MSI', highResponseStats.get('MSI'))
-                .set('high_PSRI', highResponseStats.get('PSRI'))
-                .set('reference_EVI', referenceStats.get('EVI'))
-                .set('reference_NDMI', referenceStats.get('NDMI'))
-                .set('reference_NDRE', referenceStats.get('NDRE'))
-                .set('reference_MSI', referenceStats.get('MSI'))
-                .set('reference_PSRI', referenceStats.get('PSRI'))
-                .set('delta_EVI', dEVI)
-                .set('delta_NDMI', dNDMI)
-                .set('delta_NDRE', dNDRE)
-                .set('delta_MSI', dMSI)
-                .set('delta_PSRI', dPSRI)
-                .set('delta_high_EVI', dHighEVI)
-                .set('delta_high_NDMI', dHighNDMI)
-                .set('delta_high_NDRE', dHighNDRE)
-                .set('delta_high_MSI', dHighMSI)
-                .set('delta_high_PSRI', dHighPSRI)
-            )
+                return (ee.Feature(None)
+                    .set('date', ee.Date(img.get('system:time_start')).format('YYYY-MM-dd'))
+                    .set('system:time_start', img.get('system:time_start'))
+                    .set('priority_EVI', priorityStats.get('EVI'))
+                    .set('priority_NDMI', priorityStats.get('NDMI'))
+                    .set('priority_NDRE', priorityStats.get('NDRE'))
+                    .set('priority_MSI', priorityStats.get('MSI'))
+                    .set('priority_PSRI', priorityStats.get('PSRI'))
+                    .set('high_EVI', highResponseStats.get('EVI'))
+                    .set('high_NDMI', highResponseStats.get('NDMI'))
+                    .set('high_NDRE', highResponseStats.get('NDRE'))
+                    .set('high_MSI', highResponseStats.get('MSI'))
+                    .set('high_PSRI', highResponseStats.get('PSRI'))
+                    .set('reference_EVI', referenceStats.get('EVI'))
+                    .set('reference_NDMI', referenceStats.get('NDMI'))
+                    .set('reference_NDRE', referenceStats.get('NDRE'))
+                    .set('reference_MSI', referenceStats.get('MSI'))
+                    .set('reference_PSRI', referenceStats.get('PSRI'))
+                    .set('delta_EVI', dEVI)
+                    .set('delta_NDMI', dNDMI)
+                    .set('delta_NDRE', dNDRE)
+                    .set('delta_MSI', dMSI)
+                    .set('delta_PSRI', dPSRI)
+                    .set('delta_high_EVI', dHighEVI)
+                    .set('delta_high_NDMI', dHighNDMI)
+                    .set('delta_high_NDRE', dHighNDRE)
+                    .set('delta_high_MSI', dHighMSI)
+                    .set('delta_high_PSRI', dHighPSRI)
+                )
 
-        vesFC = ee.FeatureCollection(vesCollection.map(makeVesFeature))
+            vesFC = ee.FeatureCollection(vesCollection.map(makeVesFeature))
 
-        try:
-            vesData = vesFC.select([
-                'date',
-                'priority_EVI', 'priority_NDMI', 'priority_NDRE', 'priority_MSI', 'priority_PSRI',
-                'high_EVI', 'high_NDMI', 'high_NDRE', 'high_MSI', 'high_PSRI',
-                'reference_EVI', 'reference_NDMI', 'reference_NDRE', 'reference_MSI', 'reference_PSRI',
-                'delta_EVI', 'delta_NDMI', 'delta_NDRE', 'delta_MSI', 'delta_PSRI',
-                'delta_high_EVI', 'delta_high_NDMI', 'delta_high_NDRE', 'delta_high_MSI', 'delta_high_PSRI'
-            ]).getInfo()['features']
-            vesData = [f['properties'] for f in vesData]
-            vesData = aggregate_rows_by_date(vesData)
-            print(f"[INFO] VDI data estratti dopo aggregazione giornaliera: {len(vesData)} record")
+            try:
+                vesData = vesFC.select([
+                    'date',
+                    'priority_EVI', 'priority_NDMI', 'priority_NDRE', 'priority_MSI', 'priority_PSRI',
+                    'high_EVI', 'high_NDMI', 'high_NDRE', 'high_MSI', 'high_PSRI',
+                    'reference_EVI', 'reference_NDMI', 'reference_NDRE', 'reference_MSI', 'reference_PSRI',
+                    'delta_EVI', 'delta_NDMI', 'delta_NDRE', 'delta_MSI', 'delta_PSRI',
+                    'delta_high_EVI', 'delta_high_NDMI', 'delta_high_NDRE', 'delta_high_MSI', 'delta_high_PSRI'
+                ]).getInfo()['features']
+                vesData = [f['properties'] for f in vesData]
+                vesData = aggregate_rows_by_date(vesData)
+                print(f"[INFO] VDI data estratti dopo aggregazione giornaliera: {len(vesData)} record")
 
-            vdiTimeSeries = []
-            for r in vesData:
-                if r.get('delta_NDMI') is not None:
-                    vdiTimeSeries.append({
-                        'date': r.get('date'),
-                        'vdi_proxy': round(float(r.get('delta_NDMI')), 6),
-                        'delta_NDMI': round(float(r.get('delta_NDMI')), 6),
-                        'delta_EVI': round(float(r.get('delta_EVI')), 6) if r.get('delta_EVI') is not None else None,
-                        'delta_NDRE': round(float(r.get('delta_NDRE')), 6) if r.get('delta_NDRE') is not None else None,
-                        'delta_MSI': round(float(r.get('delta_MSI')), 6) if r.get('delta_MSI') is not None else None,
-                        'delta_PSRI': round(float(r.get('delta_PSRI')), 6) if r.get('delta_PSRI') is not None else None,
-                    })
-        except Exception as e:
-            print(f"[WARN] Errore estrazione VDI: {str(e)}")
-            vesData = []
-            vdiTimeSeries = []
+                vdiTimeSeries = []
+                for r in vesData:
+                    if r.get('delta_NDMI') is not None:
+                        vdiTimeSeries.append({
+                            'date': r.get('date'),
+                            'vdi_proxy': round(float(r.get('delta_NDMI')), 6),
+                            'delta_NDMI': round(float(r.get('delta_NDMI')), 6),
+                            'delta_EVI': round(float(r.get('delta_EVI')), 6) if r.get('delta_EVI') is not None else None,
+                            'delta_NDRE': round(float(r.get('delta_NDRE')), 6) if r.get('delta_NDRE') is not None else None,
+                            'delta_MSI': round(float(r.get('delta_MSI')), 6) if r.get('delta_MSI') is not None else None,
+                            'delta_PSRI': round(float(r.get('delta_PSRI')), 6) if r.get('delta_PSRI') is not None else None,
+                        })
+            except Exception as e:
+                print(f"[WARN] Errore estrazione VDI: {str(e)}")
+                vesData = []
+                vdiTimeSeries = []
 
-        # ============================================================
-        # VDI STANDARDIZZATO (I8 + I9)
-        # ============================================================
-        MIN_VDI_OBSERVATIONS = 5
+            # ============================================================
+            # VDI STANDARDIZZATO (I8 + I9)
+            # ============================================================
+            MIN_VDI_OBSERVATIONS = 5
 
-        if priorityPct < 1:
-            vdiScore = None
-            vdiClass = "Insufficient priority area"
-            vdiRSquared = None
-            vdiConfidence = "not_applicable"
-            vdiTStat = None
-            vdiNEff = None
-            vdiLag1Autocorr = None
-        else:
-            validVdi = [r for r in vesData if r.get('delta_NDMI') is not None and r.get('date')]
-
-            if len(validVdi) >= MIN_VDI_OBSERVATIONS:
-                validVdiSorted = sorted(validVdi, key=lambda r: r['date'])
-                firstDate = datetime.datetime.strptime(validVdiSorted[0]['date'], '%Y-%m-%d')
-                xs = [(datetime.datetime.strptime(r['date'], '%Y-%m-%d') - firstDate).days for r in validVdiSorted]
-                ys = [float(r['delta_NDMI']) for r in validVdiSorted]
-
-                reg = standardized_vdi_regression(xs, ys)
-
-                if reg is None:
-                    vdiScore = None
-                    vdiClass = "Insufficient priority area"
-                    vdiConfidence = "not_applicable"
-                    vdiRSquared = None
-                    vdiTStat = None
-                    vdiNEff = None
-                    vdiLag1Autocorr = None
-                else:
-                    vdiScore = reg["slope"]
-                    vdiRSquared = round(reg["r_squared"], 3)
-                    vdiTStat = round(reg["t_stat"], 3) if reg["t_stat"] is not None else None
-                    vdiNEff = reg["n_effective"]
-                    vdiLag1Autocorr = reg["lag1_autocorrelation"]
-                    vdiClass = classify_vdi_from_tstat(reg["t_stat"])
-                    vdiConfidence = confidence_from_tstat(reg["t_stat"], reg["n_effective"])
-            else:
+            if priorityPct < 1:
                 vdiScore = None
-                vdiClass = "Insufficient statistical confidence"
+                vdiClass = "Insufficient priority area"
                 vdiRSquared = None
                 vdiConfidence = "not_applicable"
                 vdiTStat = None
                 vdiNEff = None
                 vdiLag1Autocorr = None
+            else:
+                validVdi = [r for r in vesData if r.get('delta_NDMI') is not None and r.get('date')]
 
-        agronomicContext["vdi_class"] = vdiClass
-        agronomicContext["vdi_score"] = round(vdiScore, 6) if vdiScore is not None else None
+                if len(validVdi) >= MIN_VDI_OBSERVATIONS:
+                    validVdiSorted = sorted(validVdi, key=lambda r: r['date'])
+                    firstDate = datetime.datetime.strptime(validVdiSorted[0]['date'], '%Y-%m-%d')
+                    xs = [(datetime.datetime.strptime(r['date'], '%Y-%m-%d') - firstDate).days for r in validVdiSorted]
+                    ys = [float(r['delta_NDMI']) for r in validVdiSorted]
+
+                    reg = standardized_vdi_regression(xs, ys)
+
+                    if reg is None:
+                        vdiScore = None
+                        vdiClass = "Insufficient priority area"
+                        vdiConfidence = "not_applicable"
+                        vdiRSquared = None
+                        vdiTStat = None
+                        vdiNEff = None
+                        vdiLag1Autocorr = None
+                    else:
+                        vdiScore = reg["slope"]
+                        vdiRSquared = round(reg["r_squared"], 3)
+                        vdiTStat = round(reg["t_stat"], 3) if reg["t_stat"] is not None else None
+                        vdiNEff = reg["n_effective"]
+                        vdiLag1Autocorr = reg["lag1_autocorrelation"]
+                        vdiClass = classify_vdi_from_tstat(reg["t_stat"])
+                        vdiConfidence = confidence_from_tstat(reg["t_stat"], reg["n_effective"])
+                else:
+                    vdiScore = None
+                    vdiClass = "Insufficient statistical confidence"
+                    vdiRSquared = None
+                    vdiConfidence = "not_applicable"
+                    vdiTStat = None
+                    vdiNEff = None
+                    vdiLag1Autocorr = None
+
+            vdiResult = {
+                "score": round(vdiScore, 6) if vdiScore is not None else None,
+                "class": vdiClass,
+                "r_squared": vdiRSquared,
+                "t_statistic": vdiTStat,
+                "n_effective": vdiNEff,
+                "lag1_autocorrelation": vdiLag1Autocorr,
+                "confidence": vdiConfidence,
+                "window_days": 60,
+                "min_observations_required": MIN_VDI_OBSERVATIONS,
+            }
+            print(f"[INFO] VDI completato: {vdiClass}")
+        else:
+            vesData = []
+            vdiTimeSeries = []
+            vdiResult = {
+                "score": None,
+                "class": None,
+                "window_days": None,
+                "r_squared": None,
+                "confidence": "not_computed_fast_mode",
+                "t_statistic": None,
+                "n_observations": None,
+                "n_effective": None,
+                "lag1_autocorrelation": None,
+                "note": "VDI storico non calcolato in modalità operational_fast. Disponibile in modalità scientific_full."
+            }
+            print("[INFO] VDI disattivato in operational_fast")
+
+        # Aggiorna il contesto agronomico con VDI
+        agronomicContext["vdi_class"] = vdiResult.get("class")
+        agronomicContext["vdi_score"] = vdiResult.get("score")
+
+        stage_time = timing_log(request_id, "vdi_step", stage_time)
 
         # ============================================================
         # F10: ANALYSIS STATUS (dopo VDI)
@@ -2103,7 +2091,7 @@ def analyze_field(req: FieldRequest, auth_id: str = Depends(verify_api_key)):
             priority_ha=priorityHa,
             persistent_pct=persistentPct,
             confirmed_priority_pct=confirmedPriorityPct,
-            vdi_class=vdiClass,
+            vdi_class=vdiResult.get("class"),
             reliability=analysisReliability
         )
         print(f"[INFO] Analysis status: {analysisStatus['code']} - {analysisStatus['label']}")
@@ -2145,39 +2133,15 @@ def analyze_field(req: FieldRequest, auth_id: str = Depends(verify_api_key)):
             }
 
         # ============================================================
-        # MAP LAYERS
+        # MAP LAYERS - PERFORMANCE OTTIMIZZATA
         # ============================================================
-        try:
-            def getVisParams(image, band, palette):
-                stats = image.select(band).reduceRegion(
-                    reducer=ee.Reducer.percentile([5, 95]), geometry=fieldGeom, scale=scale, maxPixels=1e9)
-                p5 = ee.Number(stats.get(f'{band}_p5'))
-                p95 = ee.Number(stats.get(f'{band}_p95'))
-                return {'min': p5.getInfo(), 'max': p95.getInfo(), 'palette': palette}
+        mapLayers = {}
 
-            latestImage = latestResponseImage
-
-            eviPalette = ['8b0000', 'ff4500', 'ffd700', '7fff00', '006400']
-            ndmiPalette = ['8b4513', 'd2b48c', 'ffffcc', '7fcdbb', '2c7fb8', '253494']
-            ndrePalette = ['7f0000', 'd7301f', 'fc8d59', 'fee08b', '91cf60', '1a9850']
-            ndviPalette = ['a50026', 'd73027', 'f46d43', 'fee08b', '66bd63', '1a9850', '006837']
-
-            eviVis = getVisParams(latestImage, 'EVI', eviPalette)
-            ndmiVis = getVisParams(latestImage, 'NDMI', ndmiPalette)
-            ndreVis = getVisParams(latestImage, 'NDRE', ndrePalette)
-            ndviVis = getVisParams(latestImage, 'NDVI', ndviPalette)
-
-            priorityMapId = priority.getMapId({'min': 1, 'max': 5, 'palette': ['91cf60', '1a9850', 'fee08b', 'fc8d59', 'd73027']})
-            eviMapId = latestImage.select('EVI').getMapId(eviVis)
-            ndmiMapId = latestImage.select('NDMI').getMapId(ndmiVis)
-            ndreMapId = latestImage.select('NDRE').getMapId(ndreVis)
-            ndviMapId = latestImage.select('NDVI').getMapId(ndviVis)
-
-            # ============================================================
-            # MAP LAYERS AGGIORNATI IN ITALIANO
-            # ============================================================
-            mapLayers = {
-                "priority": {
+        if GENERATE_RESPONSE_MAP_LAYER:
+            try:
+                # Response Map layer
+                priorityMapId = priority.getMapId({'min': 1, 'max': 5, 'palette': ['91cf60', '1a9850', 'fee08b', 'fc8d59', 'd73027']})
+                mapLayers["priority"] = {
                     "name": "Response Map",
                     "type": "ee_tile",
                     "url": priorityMapId["tile_fetcher"].url_format,
@@ -2190,180 +2154,224 @@ def analyze_field(req: FieldRequest, auth_id: str = Depends(verify_api_key)):
                         {"class": 4, "label": "Priorità confermata", "color": "#fc8d59"},
                         {"class": 5, "label": "Priorità persistente", "color": "#d73027"},
                     ]
-                },
-                "evi": {
-                    "name": "EVI",
-                    "type": "ee_tile",
-                    "url": eviMapId["tile_fetcher"].url_format,
-                    "opacity": 0.70,
-                    "group": "Vigore vegetativo",
-                    "min": eviVis["min"],
-                    "max": eviVis["max"],
-                    "palette": eviPalette,
-                    "legendLabels": {
-                        "low": "Basso vigore",
-                        "high": "Alto vigore"
-                    }
-                },
-                "ndmi": {
-                    "name": "NDMI",
-                    "type": "ee_tile",
-                    "url": ndmiMapId["tile_fetcher"].url_format,
-                    "opacity": 0.70,
-                    "group": "Stato idrico",
-                    "min": ndmiVis["min"],
-                    "max": ndmiVis["max"],
-                    "palette": ndmiPalette,
-                    "legendLabels": {
-                        "low": "Vegetazione più secca",
-                        "high": "Vegetazione più umida"
-                    }
-                },
-                "ndre": {
-                    "name": "NDRE",
-                    "type": "ee_tile",
-                    "url": ndreMapId["tile_fetcher"].url_format,
-                    "opacity": 0.70,
-                    "group": "Attività clorofilliana",
-                    "min": ndreVis["min"],
-                    "max": ndreVis["max"],
-                    "palette": ndrePalette,
-                    "legendLabels": {
-                        "low": "Bassa attività",
-                        "high": "Alta attività"
-                    }
-                },
-                "ndvi": {
-                    "name": "NDVI",
-                    "type": "ee_tile",
-                    "url": ndviMapId["tile_fetcher"].url_format,
-                    "opacity": 0.70,
-                    "group": "Vigore vegetativo",
-                    "min": ndviVis["min"],
-                    "max": ndviVis["max"],
-                    "palette": ndviPalette,
-                    "legendLabels": {
-                        "low": "Basso vigore",
-                        "high": "Alto vigore"
-                    }
                 }
-            }
-            print("[INFO] Map layers generati: Response Map, EVI, NDMI, NDRE, NDVI")
-        except Exception as e:
-            print(f"[WARN] Errore generazione map layer: {str(e)}")
-            mapLayers = {}
+                stage_time = timing_log(request_id, "response_map_layer_generated", stage_time)
+            except Exception as e:
+                print(f"[WARN] Errore generazione Response Map layer: {str(e)}")
+        else:
+            print("[INFO] Response Map layer disattivato")
+
+        # Index map layers (opzionali)
+        if GENERATE_INDEX_MAP_LAYERS:
+            try:
+                def getVisParams(image, band, palette):
+                    stats = image.select(band).reduceRegion(
+                        reducer=ee.Reducer.percentile([5, 95]), geometry=fieldGeom, scale=scale, maxPixels=1e9)
+                    p5 = ee.Number(stats.get(f'{band}_p5'))
+                    p95 = ee.Number(stats.get(f'{band}_p95'))
+                    return {'min': p5.getInfo(), 'max': p95.getInfo(), 'palette': palette}
+
+                latestImage = latestResponseImage
+
+                eviPalette = ['8b0000', 'ff4500', 'ffd700', '7fff00', '006400']
+                ndmiPalette = ['8b4513', 'd2b48c', 'ffffcc', '7fcdbb', '2c7fb8', '253494']
+                ndrePalette = ['7f0000', 'd7301f', 'fc8d59', 'fee08b', '91cf60', '1a9850']
+                ndviPalette = ['a50026', 'd73027', 'f46d43', 'fee08b', '66bd63', '1a9850', '006837']
+
+                eviVis = getVisParams(latestImage, 'EVI', eviPalette)
+                ndmiVis = getVisParams(latestImage, 'NDMI', ndmiPalette)
+                ndreVis = getVisParams(latestImage, 'NDRE', ndrePalette)
+                ndviVis = getVisParams(latestImage, 'NDVI', ndviPalette)
+
+                eviMapId = latestImage.select('EVI').getMapId(eviVis)
+                ndmiMapId = latestImage.select('NDMI').getMapId(ndmiVis)
+                ndreMapId = latestImage.select('NDRE').getMapId(ndreVis)
+                ndviMapId = latestImage.select('NDVI').getMapId(ndviVis)
+
+                mapLayers.update({
+                    "evi": {
+                        "name": "EVI",
+                        "type": "ee_tile",
+                        "url": eviMapId["tile_fetcher"].url_format,
+                        "opacity": 0.70,
+                        "group": "Vigore vegetativo",
+                        "min": eviVis["min"],
+                        "max": eviVis["max"],
+                        "palette": eviPalette,
+                        "legendLabels": {
+                            "low": "Basso vigore",
+                            "high": "Alto vigore"
+                        }
+                    },
+                    "ndmi": {
+                        "name": "NDMI",
+                        "type": "ee_tile",
+                        "url": ndmiMapId["tile_fetcher"].url_format,
+                        "opacity": 0.70,
+                        "group": "Stato idrico",
+                        "min": ndmiVis["min"],
+                        "max": ndmiVis["max"],
+                        "palette": ndmiPalette,
+                        "legendLabels": {
+                            "low": "Vegetazione più secca",
+                            "high": "Vegetazione più umida"
+                        }
+                    },
+                    "ndre": {
+                        "name": "NDRE",
+                        "type": "ee_tile",
+                        "url": ndreMapId["tile_fetcher"].url_format,
+                        "opacity": 0.70,
+                        "group": "Attività clorofilliana",
+                        "min": ndreVis["min"],
+                        "max": ndreVis["max"],
+                        "palette": ndrePalette,
+                        "legendLabels": {
+                            "low": "Bassa attività",
+                            "high": "Alta attività"
+                        }
+                    },
+                    "ndvi": {
+                        "name": "NDVI",
+                        "type": "ee_tile",
+                        "url": ndviMapId["tile_fetcher"].url_format,
+                        "opacity": 0.70,
+                        "group": "Vigore vegetativo",
+                        "min": ndviVis["min"],
+                        "max": ndviVis["max"],
+                        "palette": ndviPalette,
+                        "legendLabels": {
+                            "low": "Basso vigore",
+                            "high": "Alto vigore"
+                        }
+                    }
+                })
+                stage_time = timing_log(request_id, "index_map_layers_generated", stage_time)
+                print("[INFO] Map layers generati: Response Map, EVI, NDMI, NDRE, NDVI")
+            except Exception as e:
+                print(f"[WARN] Errore generazione index map layers: {str(e)}")
+        else:
+            print("[INFO] Index map layers disattivati")
 
         # ============================================================
         # MAP SNAPSHOTS PER REPORT
         # ============================================================
-        try:
-            # Buffer dinamico per mostrare anche il contesto attorno al campo.
-            fieldAreaForThumb = ee.Number(fieldGeom.area(1))
-            thumbBuffer = fieldAreaForThumb.sqrt().multiply(0.90).max(100).min(500)
-            thumbRegion = fieldGeom.buffer(thumbBuffer).bounds(1)
+        mapSnapshots = {}
 
-            thumbParamsBase = {
-                "region": thumbRegion,
-                "dimensions": "1400x850",
-                "format": "png"
-            }
+        if GENERATE_MAP_SNAPSHOTS:
+            try:
+                # Buffer dinamico per mostrare anche il contesto attorno al campo.
+                fieldAreaForThumb = ee.Number(fieldGeom.area(1))
+                thumbBuffer = fieldAreaForThumb.sqrt().multiply(0.90).max(100).min(500)
+                thumbRegion = fieldGeom.buffer(thumbBuffer).bounds(1)
 
-            # Bordo campo per evidenziare il perimetro nell'immagine report.
-            fieldOutline = ee.Image().byte().paint(
-                featureCollection=ee.FeatureCollection([ee.Feature(fieldGeom)]),
-                color=1,
-                width=4
-            ).visualize(
-                palette=["111827"],
-                forceRgbOutput=True
-            )
+                thumbParamsBase = {
+                    "region": thumbRegion,
+                    "dimensions": "1400x850",
+                    "format": "png"
+                }
 
-            # Base satellitare NON clippata al campo.
-            # Si usa Sentinel-2 grezzo/scalato sul buffer, così compare anche il contesto esterno.
-            snapshotBaseImage = ee.Image(
-                s2
-                .filterBounds(thumbRegion)
-                .filterDate(latestDate.advance(-30, 'day'), latestDate.advance(1, 'day'))
-                .sort('CLOUDY_PIXEL_PERCENTAGE')
-                .first()
-            ).divide(10000).clip(thumbRegion)
+                # Bordo campo per evidenziare il perimetro nell'immagine report.
+                fieldOutline = ee.Image().byte().paint(
+                    featureCollection=ee.FeatureCollection([ee.Feature(fieldGeom)]),
+                    color=1,
+                    width=4
+                ).visualize(
+                    palette=["111827"],
+                    forceRgbOutput=True
+                )
 
-            trueColorVis = {
-                "bands": ["B4", "B3", "B2"],
-                "min": 0.02,
-                "max": 0.30,
-                "gamma": 1.15
-            }
+                # Base satellitare NON clippata al campo.
+                snapshotBaseImage = ee.Image(
+                    s2
+                    .filterBounds(thumbRegion)
+                    .filterDate(latestDate.advance(-30, 'day'), latestDate.advance(1, 'day'))
+                    .sort('CLOUDY_PIXEL_PERCENTAGE')
+                    .first()
+                ).divide(10000).clip(thumbRegion)
 
-            satelliteBase = snapshotBaseImage.visualize(
-                **trueColorVis,
-                forceRgbOutput=True
-            )
+                trueColorVis = {
+                    "bands": ["B4", "B3", "B2"],
+                    "min": 0.02,
+                    "max": 0.30,
+                    "gamma": 1.15
+                }
 
-            # Overlay clippati al campo.
-            priorityOverlay = priority.visualize(
-                min=1,
-                max=5,
-                palette=['91cf60', '1a9850', 'fee08b', 'fc8d59', 'd73027'],
-                opacity=0.62,
-                forceRgbOutput=True
-            )
+                satelliteBase = snapshotBaseImage.visualize(
+                    **trueColorVis,
+                    forceRgbOutput=True
+                )
 
-            eviOverlay = latestResponseImage.select('EVI').visualize(
-                **eviVis,
-                opacity=0.58,
-                forceRgbOutput=True
-            )
+                # Overlay clippati al campo - solo se il layer è stato generato
+                if GENERATE_RESPONSE_MAP_LAYER and "priority" in mapLayers:
+                    priorityOverlay = priority.visualize(
+                        min=1,
+                        max=5,
+                        palette=['91cf60', '1a9850', 'fee08b', 'fc8d59', 'd73027'],
+                        opacity=0.62,
+                        forceRgbOutput=True
+                    )
+                    mapSnapshots["priority"] = satelliteBase.blend(priorityOverlay).blend(fieldOutline).getThumbURL(thumbParamsBase)
+                else:
+                    mapSnapshots["priority"] = None
 
-            ndmiOverlay = latestResponseImage.select('NDMI').visualize(
-                **ndmiVis,
-                opacity=0.58,
-                forceRgbOutput=True
-            )
+                if GENERATE_INDEX_MAP_LAYERS:
+                    # Usa le variabili già calcolate
+                    if 'eviVis' in locals():
+                        eviOverlay = latestResponseImage.select('EVI').visualize(
+                            **eviVis,
+                            opacity=0.58,
+                            forceRgbOutput=True
+                        )
+                        mapSnapshots["evi"] = satelliteBase.blend(eviOverlay).blend(fieldOutline).getThumbURL(thumbParamsBase)
+                    else:
+                        mapSnapshots["evi"] = None
 
-            ndreOverlay = latestResponseImage.select('NDRE').visualize(
-                **ndreVis,
-                opacity=0.58,
-                forceRgbOutput=True
-            )
+                    if 'ndmiVis' in locals():
+                        ndmiOverlay = latestResponseImage.select('NDMI').visualize(
+                            **ndmiVis,
+                            opacity=0.58,
+                            forceRgbOutput=True
+                        )
+                        mapSnapshots["ndmi"] = satelliteBase.blend(ndmiOverlay).blend(fieldOutline).getThumbURL(thumbParamsBase)
+                    else:
+                        mapSnapshots["ndmi"] = None
 
-            ndviOverlay = latestResponseImage.select('NDVI').visualize(
-                **ndviVis,
-                opacity=0.58,
-                forceRgbOutput=True
-            )
+                    if 'ndreVis' in locals():
+                        ndreOverlay = latestResponseImage.select('NDRE').visualize(
+                            **ndreVis,
+                            opacity=0.58,
+                            forceRgbOutput=True
+                        )
+                        mapSnapshots["ndre"] = satelliteBase.blend(ndreOverlay).blend(fieldOutline).getThumbURL(thumbParamsBase)
+                    else:
+                        mapSnapshots["ndre"] = None
 
-            mapSnapshots = {
-                "priority": satelliteBase
-                    .blend(priorityOverlay)
-                    .blend(fieldOutline)
-                    .getThumbURL(thumbParamsBase),
+                    if 'ndviVis' in locals():
+                        ndviOverlay = latestResponseImage.select('NDVI').visualize(
+                            **ndviVis,
+                            opacity=0.58,
+                            forceRgbOutput=True
+                        )
+                        mapSnapshots["ndvi"] = satelliteBase.blend(ndviOverlay).blend(fieldOutline).getThumbURL(thumbParamsBase)
+                    else:
+                        mapSnapshots["ndvi"] = None
+                else:
+                    mapSnapshots.update({
+                        "evi": None,
+                        "ndmi": None,
+                        "ndre": None,
+                        "ndvi": None
+                    })
 
-                "evi": satelliteBase
-                    .blend(eviOverlay)
-                    .blend(fieldOutline)
-                    .getThumbURL(thumbParamsBase),
-
-                "ndmi": satelliteBase
-                    .blend(ndmiOverlay)
-                    .blend(fieldOutline)
-                    .getThumbURL(thumbParamsBase),
-
-                "ndre": satelliteBase
-                    .blend(ndreOverlay)
-                    .blend(fieldOutline)
-                    .getThumbURL(thumbParamsBase),
-
-                "ndvi": satelliteBase
-                    .blend(ndviOverlay)
-                    .blend(fieldOutline)
-                    .getThumbURL(thumbParamsBase),
-            }
-
-            print("[INFO] Map snapshots generati per report con base satellitare e contesto esterno")
-        except Exception as e:
-            print(f"[WARN] Errore generazione map snapshots: {str(e)}")
-            mapSnapshots = {}
+                print("[INFO] Map snapshots generati per report")
+            except Exception as e:
+                print(f"[WARN] Errore generazione map snapshots: {str(e)}")
+                mapSnapshots = {}
+        else:
+            print("[INFO] Map snapshots disattivati per analisi veloce")
+        
+        stage_time = timing_log(request_id, "map_snapshots_step", stage_time)
 
         # ============================================================
         # COSTRUZIONE RISULTATO
@@ -2382,17 +2390,7 @@ def analyze_field(req: FieldRequest, auth_id: str = Depends(verify_api_key)):
                 "positive_score": round(float(positiveMeanVal), 4),
                 "negative_score": round(float(negativeMeanVal), 4),
             },
-            "vdi": {
-                "score": round(vdiScore, 6) if vdiScore is not None else None,
-                "class": vdiClass,
-                "r_squared": vdiRSquared,
-                "t_statistic": vdiTStat,
-                "n_effective": vdiNEff,
-                "lag1_autocorrelation": vdiLag1Autocorr,
-                "confidence": vdiConfidence,
-                "window_days": 60,
-                "min_observations_required": MIN_VDI_OBSERVATIONS,
-            },
+            "vdi": vdiResult,
             "dataQuality": {
                 "last3_gap_days": last3GapDays,
                 "temporally_consistent": last3TemporallyConsistent,
@@ -2422,6 +2420,14 @@ def analyze_field(req: FieldRequest, auth_id: str = Depends(verify_api_key)):
             "multivariateNormalityFlag": multivariateNormalityFlag,
             "analysisReliability": analysisReliability,
             "analysisStatus": analysisStatus,  # F10
+            "analysisProfile": {
+                "profile": ANALYSIS_PROFILE,
+                "compute_field_significance": COMPUTE_FIELD_SIGNIFICANCE,
+                "compute_vdi": COMPUTE_VDI,
+                "generate_response_map_layer": GENERATE_RESPONSE_MAP_LAYER,
+                "generate_index_map_layers": GENERATE_INDEX_MAP_LAYERS,
+                "generate_map_snapshots": GENERATE_MAP_SNAPSHOTS
+            },
             "productDisclaimer": {
                 "tier": "preliminary_satellite_screening",
                 "short": "Screening satellitare preliminare — non sostituisce un sopralluogo agronomico.",
@@ -2444,8 +2450,8 @@ def analyze_field(req: FieldRequest, auth_id: str = Depends(verify_api_key)):
                 "reweighting_iterations": robustCovIterations,
             },
             "trendData": trendData,
-            "vdiData": vesData,
-            "vdiTimeSeries": vdiTimeSeries,
+            "vdiData": vesData if COMPUTE_VDI else [],
+            "vdiTimeSeries": vdiTimeSeries if COMPUTE_VDI else [],
             "mapLayers": mapLayers,
             "mapSnapshots": mapSnapshots,
         }
@@ -2463,60 +2469,17 @@ def analyze_field(req: FieldRequest, auth_id: str = Depends(verify_api_key)):
         }
 
         # ============================================================
-        # FASE 1: validazione progressiva non bloccante del contratto dati.
-        # Non deve mai interrompere l'analisi operativa.
+        # STEP 5: VALIDAZIONE CONTRATTO DATI (SOSTITUISCE IL BLOCCO MANUALE)
         # ============================================================
-        contract_valid = True
-
-        try:
-            AnalysisResultContract.model_validate(result)
-
-        except Exception as contract_error:
-            contract_valid = False
-            contract_error_id = str(uuid.uuid4())[:8]
-
-            print("=" * 80)
-            print(f"[WARN] analysis_contract_validation_failed error_id={contract_error_id}")
-            print(str(contract_error))
-
-            if isinstance(result, dict):
-                print("[DEBUG] Result keys:", list(result.keys()))
-
-                for key in [
-                    "totalArea",
-                    "priorityAreas",
-                    "analysisStatus",
-                    "analysisReliability",
-                    "fieldSignificance",
-                    "multivariateNormalityFlag",
-                    "vdi",
-                    "agronomicContext",
-                    "anomalyThreshold",
-                    "dataQuality",
-                    "mapLayers",
-                    "mapSnapshots"
-                ]:
-                    print(f"[DEBUG CONTRACT] {key} =", result.get(key))
-            else:
-                print("[DEBUG] Result type:", type(result))
-
-            print("=" * 80)
-
-            audit_log(
-                "analysis_contract_validation_warning",
-                request_id=request_id,
-                auth_id=auth_id,
-                geometry_hash=geom_hash,
-                error_id=contract_error_id
-            )
-
-        result["contractValidation"] = {
-            "valid": contract_valid,
-            "mode": "progressive_non_blocking"
-        }
+        result = validate_analysis_result_contract_or_raise(
+            result=result,
+            request_id=request_id,
+            auth_id=auth_id,
+            geom_hash=geom_hash
+        )
 
         # ============================================================
-        # F13: AUDIT LOG SUCCESSO (PRIMA DEL RETURN)
+        # F13: AUDIT LOG SUCCESSO
         # ============================================================
         audit_log(
             "analyze_completed",
@@ -2526,25 +2489,30 @@ def analyze_field(req: FieldRequest, auth_id: str = Depends(verify_api_key)):
             total_area_ha=result.get("totalArea"),
             priority_percent=result.get("agronomicContext", {}).get("priority_percent"),
             analysis_status=result.get("analysisStatus", {}).get("code"),
-            contract_valid=result.get("contractValidation", {}).get("valid")
+            contract_valid=result.get("contractValidation", {}).get("valid"),
+            analysis_profile=ANALYSIS_PROFILE
         )
 
-        # DEBUG PRINT
-        print("=" * 60)
-        print("[DEBUG] RIEPILOGO ANALISI COMPLETATA")
-        print("=" * 60)
-        print(f"[DEBUG] trendData length: {len(trendData)}")
-        print(f"[DEBUG] vdiData length: {len(vesData)}")
-        print(f"[DEBUG] totalArea: {round(totalAreaVal / 10000, 2)} ha")
-        print(f"[DEBUG] priorityAreas count: {len(priorityAreas)}")
-        print(f"[DEBUG] mahal_threshold: {round(MAHAL_THRESHOLD, 4)}")
-        print(f"[DEBUG] fieldSignificance: {fieldSignificance}")
-        print(f"[DEBUG] analysisReliability: {analysisReliability}")
-        print(f"[DEBUG] analysisStatus: {analysisStatus}")
-        print(f"[DEBUG] validation_quality: {analysis_quality['level']}")
-        print(f"[DEBUG] validation_warnings: {len(validation_warnings)}")
-        print("=" * 60)
+        # DEBUG PRINT (solo se abilitato)
+        if DEBUG_ANALYSIS:
+            print("=" * 60)
+            print("[DEBUG] RIEPILOGO ANALISI COMPLETATA")
+            print("=" * 60)
+            print(f"[DEBUG] trendData length: {len(trendData)}")
+            print(f"[DEBUG] vdiData length: {len(vesData) if COMPUTE_VDI else 'disabled'}")
+            print(f"[DEBUG] totalArea: {round(totalAreaVal / 10000, 2)} ha")
+            print(f"[DEBUG] priorityAreas count: {len(priorityAreas)}")
+            print(f"[DEBUG] mahal_threshold: {round(MAHAL_THRESHOLD, 4)}")
+            print(f"[DEBUG] fieldSignificance: {fieldSignificance}")
+            print(f"[DEBUG] analysisReliability: {analysisReliability}")
+            print(f"[DEBUG] analysisStatus: {analysisStatus}")
+            print(f"[DEBUG] validation_quality: {analysis_quality['level']}")
+            print(f"[DEBUG] validation_warnings: {len(validation_warnings)}")
+            print(f"[DEBUG] analysis_profile: {ANALYSIS_PROFILE}")
+            print("=" * 60)
+
         print("[INFO] Analisi completata con successo")
+        timing_log(request_id, "analysis_total_completed", stage_time)
 
         return result
 
@@ -2578,6 +2546,19 @@ def analyze_field(req: FieldRequest, auth_id: str = Depends(verify_api_key)):
             status_code=500,
             detail=f"Errore interno durante l'analisi. Codice errore: {error_id}"
         )
+
+
+# ================================================================
+# STEP 6: ENDPOINT SCHEMA CONTRATTO DATI
+# ================================================================
+
+@app.get("/schema/analysis-result")
+def get_analysis_result_schema(auth_id: str = Depends(verify_api_key)):
+    """
+    Restituisce lo JSON Schema ufficiale del payload /analyze.
+    Utile per frontend, test e documentazione tecnica.
+    """
+    return AnalysisResultContract.model_json_schema()
 
 
 # ================================================================

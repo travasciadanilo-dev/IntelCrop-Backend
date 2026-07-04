@@ -1,4 +1,4 @@
-import main
+from schemas import AnalysisResultContract, AnomalyThreshold
 
 
 def test_analysis_result_contract_accepts_minimal_valid_payload():
@@ -32,38 +32,39 @@ def test_analysis_result_contract_accepts_minimal_valid_payload():
             "note": "Affidabilità statistica del segnale."
         },
         "fieldSignificance": {
-            "applicable": True,
-            "p_value": 1.0,
-            "significant": False,
+            "applicable": False,
+            "p_value": None,
+            "significant": None,
             "expected_false_positive_rate": 0.0125,
             "observed_rate": 0.0,
             "n_anomalous_pixels": 0,
-            "n_anomalous_effective_pixels": 0,
+            "n_anomalous_effective_pixels": None,
             "n_total_pixels": 38,
-            "n_effective_pixels": 10,
+            "n_effective_pixels": None,
             "spatial_independence_assumed": False,
-            "note": "Test binomiale conservativo."
+            "note": "Significatività avanzata non calcolata."
         },
         "multivariateNormalityFlag": {
-            "reliable": False,
-            "flagged_components": [
-                "normalita_multivariata_non_verificata"
-            ],
+            "reliable": None,
+            "flagged_components": [],
             "skewness": [],
             "excess_kurtosis": [],
-            "note": "Normalità multivariata non pienamente verificata."
+            "note": "Normalità multivariata non calcolata."
         },
         "vdi": {
             "score": None,
             "class": None,
             "window_days": None,
             "r_squared": None,
-            "confidence": None,
+            "confidence": "not_computed_fast_mode",
             "t_statistic": None,
             "n_observations": None,
             "n_effective": None,
-            "lag1_autocorrelation": None
+            "lag1_autocorrelation": None,
+            "note": "VDI non calcolato in modalità fast."
         },
+        "vdiData": [],
+        "trendData": [],
         "agronomicContext": {
             "ordinary_percent": 100.0,
             "high_performance_percent": 0.0,
@@ -90,15 +91,30 @@ def test_analysis_result_contract_accepts_minimal_valid_payload():
             "valid_observations": 54
         },
         "mapLayers": {},
-        "mapSnapshots": {}
+        "mapSnapshots": {},
+        "analysisProfile": {
+            "profile": "operational_fast",
+            "compute_trend_data": False,
+            "compute_field_significance": False,
+            "compute_normality_diagnostics": False,
+            "compute_vdi": False,
+            "generate_response_map_layer": True,
+            "generate_index_map_layers": False,
+            "generate_map_snapshots": False
+        },
+        "contractValidation": {
+            "valid": True,
+            "mode": "warn"
+        }
     }
 
-    validated = main.AnalysisResultContract.model_validate(payload)
+    validated = AnalysisResultContract.model_validate(payload)
 
     assert validated.totalArea == 0.38
     assert validated.analysisStatus.code == "no_priority"
     assert validated.priorityAreas[0].class_id == 1
     assert validated.agronomicContext.priority_percent == 0.0
+    assert validated.analysisProfile.profile == "operational_fast"
 
 
 def test_anomaly_threshold_accepts_warning_only_payload():
@@ -108,8 +124,20 @@ def test_anomaly_threshold_accepts_warning_only_payload():
         "warning": "Soglia calcolata con cautela."
     }
 
-    validated = main.AnomalyThreshold.model_validate(payload)
+    validated = AnomalyThreshold.model_validate(payload)
 
     assert validated.method == "hotelling_t2_corrected"
     assert validated.mahalanobis_threshold is None
     assert validated.note == "Campo con pochi pixel validi."
+
+
+def test_analysis_result_schema_is_exportable():
+    schema = AnalysisResultContract.model_json_schema()
+
+    assert schema["title"] == "AnalysisResultContract"
+    assert "properties" in schema
+    assert "totalArea" in schema["properties"]
+    assert "priorityAreas" in schema["properties"]
+    assert "analysisStatus" in schema["properties"]
+    assert "analysisReliability" in schema["properties"]
+    assert "fieldSignificance" in schema["properties"]

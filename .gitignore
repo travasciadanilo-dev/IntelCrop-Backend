@@ -1,16 +1,29 @@
-# Python
+# Python cache / compiled files
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Virtual environment
 venv/
+.venv/
+
+# Environment files
 .env
 .env.local
+.env.* 
+!.env.example
 
 # Logs
 *.log
+
+# Test / coverage
+.coverage
+htmlcov/
+coverage.xml
 
 # IDE
 .vscode/
@@ -23,3 +36,8 @@ Thumbs.db
 # Backup files
 *_backup_*
 *backup*
+
+# Credentials / secrets
+*.json.key
+*service-account*.json
+*credentials*.json
