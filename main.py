@@ -32,12 +32,17 @@ F10 - analysisStatus canonico per frontend
 F11 - Integrazione python-dotenv per variabili d'ambiente
 F12 - Configurazione API migliorata: ENV, limiti campo, rate limit
 F13 - Security: rate limit, audit log, validazione area pre-GEE
+F14 - Contratto dati tipizzato con Pydantic (FASE 1)
+F15 - Aggiornamento a Pydantic v2 (ConfigDict)
+F16 - CORS robusto con logging e headers espliciti
+F17 - Debug esteso su validazione contratto (logging completo)
+F18 - Validazione contratto NON bloccante (warning + flag)
 ============================================================
 """
 
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Dict, Any, Optional
 import ee
 import json
@@ -59,19 +64,33 @@ load_dotenv()
 app = FastAPI(title="IntelCrop GEE API")
 
 # ================================================================
-# F8: CORS RISTRETTO
+# F8 + F16: CORS RISTRETTO CON LOGGING
 # ================================================================
 ALLOWED_ORIGINS = os.getenv(
     "ALLOWED_ORIGINS",
     "http://localhost:5173,http://127.0.0.1:5173"
 ).split(",")
 
+ALLOWED_ORIGINS_LIST = [
+    origin.strip()
+    for origin in ALLOWED_ORIGINS
+    if origin.strip()
+]
+
+print("[INFO] CORS allowed origins:", ALLOWED_ORIGINS_LIST)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[origin.strip() for origin in ALLOWED_ORIGINS if origin.strip()],
+    allow_origins=ALLOWED_ORIGINS_LIST,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "X-API-Key"],
+    allow_headers=[
+        "Content-Type",
+        "X-API-Key",
+        "Accept",
+        "Origin",
+        "Authorization"
+    ],
 )
 
 # ================================================================
@@ -134,6 +153,179 @@ class FieldRequest(BaseModel):
     apply_spatial_smoothing: bool = True
     covariance_shrinkage: float = 0.15
     robust_covariance_iterations: int = 2
+
+
+# ================================================================
+# F14 + F15: CONTRATTO DATI TIPIZZATO - RESPONSE SCHEMAS (Pydantic v2)
+# ================================================================
+
+class PriorityArea(BaseModel):
+    class_id: int = Field(alias="class")
+    label: str
+    color: str
+    area_ha: float
+    percent: float
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class AnalysisStatus(BaseModel):
+    code: str
+    label: str
+    severity: str
+    color: str
+    description: str
+    recommended_action: str
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class AnalysisReliability(BaseModel):
+    level: str
+    label: str
+    reasons: List[str]
+    note: str
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class FieldSignificance(BaseModel):
+    applicable: bool
+    p_value: Optional[float] = None
+    significant: Optional[bool] = None
+    expected_false_positive_rate: Optional[float] = None
+    observed_rate: Optional[float] = None
+    n_anomalous_pixels: Optional[int] = None
+    n_anomalous_effective_pixels: Optional[int] = None
+    n_total_pixels: Optional[int] = None
+    n_effective_pixels: Optional[int] = None
+    spatial_independence_assumed: Optional[bool] = None
+    note: Optional[str] = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class MultivariateNormalityFlag(BaseModel):
+    reliable: bool
+    flagged_components: List[str] = []
+    skewness: List[Optional[float]] = []
+    excess_kurtosis: List[Optional[float]] = []
+    note: Optional[str] = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class VDIResult(BaseModel):
+    score: Optional[float] = None
+    class_name: Optional[str] = Field(default=None, alias="class")
+    window_days: Optional[int] = None
+    r_squared: Optional[float] = None
+    confidence: Optional[str] = None
+    t_statistic: Optional[float] = None
+    n_observations: Optional[int] = None
+    n_effective: Optional[float] = None
+    lag1_autocorrelation: Optional[float] = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class MapLayerLegendItem(BaseModel):
+    class_id: Optional[int] = Field(default=None, alias="class")
+    label: str
+    color: str
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class MapLayerLegendLabels(BaseModel):
+    low: Optional[str] = None
+    high: Optional[str] = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class MapLayer(BaseModel):
+    name: str
+    type: str
+    url: str
+    opacity: Optional[float] = None
+    group: Optional[str] = None
+    min: Optional[float] = None
+    max: Optional[float] = None
+    palette: Optional[List[str]] = None
+    legend: Optional[List[MapLayerLegendItem]] = None
+    legendLabels: Optional[MapLayerLegendLabels] = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class MapSnapshots(BaseModel):
+    priority: Optional[str] = None
+    evi: Optional[str] = None
+    ndmi: Optional[str] = None
+    ndre: Optional[str] = None
+    ndvi: Optional[str] = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class AgronomicContext(BaseModel):
+    ordinary_percent: float
+    high_performance_percent: float
+    priority_percent: float
+    priority_area_ha: float
+    emerging_percent: float
+    confirmed_percent: float
+    persistent_percent: float
+    confirmed_priority_percent: float
+    attention_level: str
+    vdi_class: Optional[str] = None
+    vdi_score: Optional[float] = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class AnomalyThreshold(BaseModel):
+    mahalanobis_threshold: Optional[float] = None
+    threshold: Optional[float] = None
+    mahalanobis_alpha: Optional[float] = None
+    alpha: Optional[float] = None
+    df: Optional[int] = None
+    method: Optional[str] = None
+    note: Optional[str] = None
+    warning: Optional[str] = None
+
+    model_config = ConfigDict(extra="allow")
+
+
+class DataQuality(BaseModel):
+    temporally_consistent: Optional[bool] = None
+    last3_gap_days: Optional[int] = None
+    last3_gap_warning_days: Optional[int] = None
+    valid_observations: Optional[int] = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class AnalysisResultContract(BaseModel):
+    totalArea: float
+    lastImageDate: Optional[str] = None
+    priorityAreas: List[PriorityArea]
+    analysisStatus: AnalysisStatus
+    analysisReliability: AnalysisReliability
+    fieldSignificance: FieldSignificance
+    multivariateNormalityFlag: MultivariateNormalityFlag
+    vdi: Optional[VDIResult] = None
+    agronomicContext: AgronomicContext
+    anomalyThreshold: Optional[AnomalyThreshold] = None
+    dataQuality: Optional[DataQuality] = None
+    mapLayers: Optional[Dict[str, MapLayer]] = None
+    mapSnapshots: Optional[MapSnapshots] = None
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        extra="allow"
+    )
 
 
 @app.get("/")
@@ -2271,6 +2463,59 @@ def analyze_field(req: FieldRequest, auth_id: str = Depends(verify_api_key)):
         }
 
         # ============================================================
+        # FASE 1: validazione progressiva non bloccante del contratto dati.
+        # Non deve mai interrompere l'analisi operativa.
+        # ============================================================
+        contract_valid = True
+
+        try:
+            AnalysisResultContract.model_validate(result)
+
+        except Exception as contract_error:
+            contract_valid = False
+            contract_error_id = str(uuid.uuid4())[:8]
+
+            print("=" * 80)
+            print(f"[WARN] analysis_contract_validation_failed error_id={contract_error_id}")
+            print(str(contract_error))
+
+            if isinstance(result, dict):
+                print("[DEBUG] Result keys:", list(result.keys()))
+
+                for key in [
+                    "totalArea",
+                    "priorityAreas",
+                    "analysisStatus",
+                    "analysisReliability",
+                    "fieldSignificance",
+                    "multivariateNormalityFlag",
+                    "vdi",
+                    "agronomicContext",
+                    "anomalyThreshold",
+                    "dataQuality",
+                    "mapLayers",
+                    "mapSnapshots"
+                ]:
+                    print(f"[DEBUG CONTRACT] {key} =", result.get(key))
+            else:
+                print("[DEBUG] Result type:", type(result))
+
+            print("=" * 80)
+
+            audit_log(
+                "analysis_contract_validation_warning",
+                request_id=request_id,
+                auth_id=auth_id,
+                geometry_hash=geom_hash,
+                error_id=contract_error_id
+            )
+
+        result["contractValidation"] = {
+            "valid": contract_valid,
+            "mode": "progressive_non_blocking"
+        }
+
+        # ============================================================
         # F13: AUDIT LOG SUCCESSO (PRIMA DEL RETURN)
         # ============================================================
         audit_log(
@@ -2280,7 +2525,8 @@ def analyze_field(req: FieldRequest, auth_id: str = Depends(verify_api_key)):
             geometry_hash=geom_hash,
             total_area_ha=result.get("totalArea"),
             priority_percent=result.get("agronomicContext", {}).get("priority_percent"),
-            analysis_status=result.get("analysisStatus", {}).get("code")
+            analysis_status=result.get("analysisStatus", {}).get("code"),
+            contract_valid=result.get("contractValidation", {}).get("valid")
         )
 
         # DEBUG PRINT
