@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -211,3 +211,33 @@ class AnalysisResultContract(BaseModel):
         populate_by_name=True,
         extra="allow"
     )
+
+
+# ================================================================
+# MODELLI PER JOB ASINCRONI (FASE 2)
+# ================================================================
+
+class JobError(BaseModel):
+    code: str
+    message: str
+    error_id: Optional[str] = None
+
+    model_config = ConfigDict(extra="allow")
+
+
+class JobCreateResponse(BaseModel):
+    job_id: str
+    status: Literal["queued"]
+
+    model_config = ConfigDict(extra="allow")
+
+
+class JobStatusResponse(BaseModel):
+    job_id: str
+    status: Literal["queued", "processing", "done", "error", "cancelled"]
+    current_step: Optional[str] = None
+    progress_pct: Optional[float] = None
+    result: Optional[AnalysisResultContract] = None
+    error: Optional[JobError] = None
+
+    model_config = ConfigDict(extra="allow")
