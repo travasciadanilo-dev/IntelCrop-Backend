@@ -1,6 +1,9 @@
 services:
   intellcrop_postgis:
-    image: postgis/postgis:16-3.4
+    build:
+      context: .
+      dockerfile: Dockerfile.postgis
+    image: intellcrop-postgis:16-3.4
     container_name: intellcrop_postgis
     restart: unless-stopped
     environment:
