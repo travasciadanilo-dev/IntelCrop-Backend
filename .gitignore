@@ -41,3 +41,7 @@ Thumbs.db
 *.json.key
 *service-account*.json
 *credentials*.json
+
+# Local GIS raw datasets
+data/raw/
+data/processed/

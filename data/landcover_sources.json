@@ -1,0 +1,41 @@
+{
+  "version": "cut_calabria_v1",
+  "region": "calabria",
+  "source_type": "landcover_subtype",
+  "source_note": "CUT Calabria land-cover layer. Describes olive grove planting subtype, not cultivar.",
+  "subtypes": [
+    {
+      "id": "olive_pure",
+      "label_it": "Oliveto puro",
+      "crop": "olive",
+      "path": "data/raw/landcover/calabria/olive_pure/oliveti.shp",
+      "active": true
+    },
+    {
+      "id": "olive_citrus",
+      "label_it": "Oliveto consociato con agrumi",
+      "crop": "olive",
+      "path": "data/raw/landcover/calabria/olive_citrus/",
+      "active": false
+    },
+    {
+      "id": "olive_vine",
+      "label_it": "Oliveto consociato con vite",
+      "crop": "olive",
+      "path": "data/raw/landcover/calabria/olive_vine/",
+      "active": false
+    }
+  ],
+  "forbidden_interpretation": [
+    "cultivar",
+    "varieta_dedotta",
+    "cultivar_baseline"
+  ],
+  "allowed_interpretation": [
+    "landcover_subtype",
+    "tipologia_di_impianto",
+    "olive_pure",
+    "olive_citrus",
+    "olive_vine"
+  ]
+}
