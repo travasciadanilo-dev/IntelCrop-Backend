@@ -182,6 +182,19 @@ class AnalysisProfile(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
+class LandcoverSubtypeMatch(BaseModel):
+    subtype: str
+    subtype_label_it: str
+    subtype_confidence: str
+    subtype_layer_version: str
+    coverage_ratio: float
+    coverage_percent: float
+    matched_subtypes: List[Dict[str, Any]] = []
+    note: Optional[str] = None
+
+    model_config = ConfigDict(extra="allow")
+
+
 class AnalysisResultContract(BaseModel):
     totalArea: float
     lastImageDate: Optional[str] = None
@@ -200,6 +213,8 @@ class AnalysisResultContract(BaseModel):
     agronomicContext: AgronomicContext
     anomalyThreshold: Optional[AnomalyThreshold] = None
     dataQuality: Optional[DataQuality] = None
+
+    landcoverSubtype: Optional[LandcoverSubtypeMatch] = None
 
     mapLayers: Optional[Dict[str, MapLayer]] = None
     mapSnapshots: Optional[MapSnapshots] = None

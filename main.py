@@ -68,6 +68,9 @@ from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from threading import Lock
 
+# Landcover matching
+from landcover_matching import match_field_to_subtype
+
 # F11: Carica variabili d'ambiente da .env
 load_dotenv()
 
@@ -1310,7 +1313,7 @@ def run_analysis_core(
 
     try:
         trendData = trendFC.select(
-            ['date', 'NDVI', 'EVI', 'NDMI', 'NDRE', 'MSI', 'PSRI', 'NBR', 'OSAVI']
+            ['date', 'NDVI', 'EVI', 'NDMI', 'NDRE', 'MSI', 'PSRI', 'OSAVI']
         ).getInfo()['features']
         trendData = [f['properties'] for f in trendData]
         print(f"[INFO] Trend data estratti: {len(trendData)} record")
@@ -2575,12 +2578,25 @@ def run_analysis_core(
     stage_time = timing_log(request_id, "map_snapshots_step", stage_time)
 
     # ============================================================
+    # LANDCOVER SUBTYPE MATCH
+    # ============================================================
+    landcover_subtype_match = match_field_to_subtype(geojson)
+
+    print(
+        "[INFO] Landcover subtype match: "
+        f"{landcover_subtype_match.get('subtype')} "
+        f"confidence={landcover_subtype_match.get('subtype_confidence')} "
+        f"coverage={landcover_subtype_match.get('coverage_percent')}%"
+    )
+
+    # ============================================================
     # COSTRUZIONE RISULTATO
     # ============================================================
     result = {
         "status": "ok",
         "lastImageDate": lastDateStr,
         "totalArea": round(totalAreaVal / 10000, 2),
+        "landcoverSubtype": landcover_subtype_match,
         "priorityAreas": priorityAreas,
         "classStats": classStats,
         "agronomicDrivers": agronomicDrivers,
@@ -2698,7 +2714,10 @@ def run_analysis_core(
         priority_percent=result.get("agronomicContext", {}).get("priority_percent"),
         analysis_status=result.get("analysisStatus", {}).get("code"),
         contract_valid=result.get("contractValidation", {}).get("valid"),
-        analysis_profile=ANALYSIS_PROFILE
+        analysis_profile=ANALYSIS_PROFILE,
+        landcover_subtype=landcover_subtype_match.get("subtype"),
+        landcover_subtype_confidence=landcover_subtype_match.get("subtype_confidence"),
+        landcover_subtype_coverage_percent=landcover_subtype_match.get("coverage_percent"),
     )
 
     # DEBUG PRINT (solo se abilitato)
@@ -2717,6 +2736,7 @@ def run_analysis_core(
         print(f"[DEBUG] validation_quality: {analysis_quality['level']}")
         print(f"[DEBUG] validation_warnings: {len(validation_warnings)}")
         print(f"[DEBUG] analysis_profile: {ANALYSIS_PROFILE}")
+        print(f"[DEBUG] landcover_subtype: {landcover_subtype_match.get('subtype')}")
         print("=" * 60)
 
     print("[INFO] Analisi completata con successo")

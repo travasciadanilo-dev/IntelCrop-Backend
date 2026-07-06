@@ -90,6 +90,26 @@ def test_analysis_result_contract_accepts_minimal_valid_payload():
             "last3_gap_warning_days": 35,
             "valid_observations": 54
         },
+        "landcoverSubtype": {
+            "subtype": "olive_pure",
+            "subtype_label_it": "Oliveto puro",
+            "subtype_confidence": "high",
+            "subtype_layer_version": "cut_calabria_v1",
+            "coverage_ratio": 1.0,
+            "coverage_percent": 100.0,
+            "matched_subtypes": [
+                {
+                    "subtype": "olive_pure",
+                    "label_it": "Oliveto puro",
+                    "source_layer_version": "cut_calabria_v1",
+                    "overlap_m2": 40221.59,
+                    "field_area_m2": 40221.6,
+                    "coverage_ratio": 1.0,
+                    "coverage_percent": 100.0
+                }
+            ],
+            "note": "Tipologia di impianto assegnata da intersezione spaziale CUT. Non rappresenta cultivar."
+        },
         "mapLayers": {},
         "mapSnapshots": {},
         "analysisProfile": {
@@ -115,6 +135,10 @@ def test_analysis_result_contract_accepts_minimal_valid_payload():
     assert validated.priorityAreas[0].class_id == 1
     assert validated.agronomicContext.priority_percent == 0.0
     assert validated.analysisProfile.profile == "operational_fast"
+    
+    assert validated.landcoverSubtype.subtype == "olive_pure"
+    assert validated.landcoverSubtype.subtype_confidence == "high"
+    assert validated.landcoverSubtype.subtype_layer_version == "cut_calabria_v1"
 
 
 def test_anomaly_threshold_accepts_warning_only_payload():
