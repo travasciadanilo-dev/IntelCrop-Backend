@@ -45,3 +45,5 @@ Thumbs.db
 # Local GIS raw datasets
 data/raw/
 data/processed/
+
+data/*.geojson
