@@ -2718,6 +2718,10 @@ def run_analysis_core(
         landcover_subtype=landcover_subtype_match.get("subtype"),
         landcover_subtype_confidence=landcover_subtype_match.get("subtype_confidence"),
         landcover_subtype_coverage_percent=landcover_subtype_match.get("coverage_percent"),
+        landcover_qc_version=landcover_subtype_match.get("landcover_qc_version"),
+        landcover_qc_class=landcover_subtype_match.get("landcover_qc_class"),
+        usable_for_baseline=landcover_subtype_match.get("usable_for_baseline"),
+        matching_layer=landcover_subtype_match.get("matching_layer"),
     )
 
     # DEBUG PRINT (solo se abilitato)

@@ -146,6 +146,7 @@ def test_analysis_result_contract_accepts_minimal_valid_payload():
     assert validated.landcoverSubtype.landcover_qc_version == "olive_pure_geom_qc_v2"
     assert validated.landcoverSubtype.landcover_qc_class == "high_confidence"
     assert validated.landcoverSubtype.usable_for_baseline is True
+    assert validated.landcoverSubtype.matching_layer == "landcover_olive_pure_high_confidence_v2"
 
 
 def test_anomaly_threshold_accepts_warning_only_payload():
