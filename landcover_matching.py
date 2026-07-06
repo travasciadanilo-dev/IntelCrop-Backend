@@ -11,6 +11,8 @@ load_dotenv()
 
 DEFAULT_SUBTYPE = "olive_generic_calabria"
 DEFAULT_LAYER_VERSION = os.getenv("LANDCOVER_LAYER_VERSION", "cut_calabria_v1")
+DEFAULT_QC_VERSION = "olive_pure_geom_qc_v2"
+DEFAULT_MATCHING_LAYER = "landcover_olive_pure_high_confidence_v2"
 
 HIGH_CONFIDENCE_COVERAGE = float(
     os.getenv("LANDCOVER_HIGH_CONFIDENCE_COVERAGE", "0.75")
@@ -94,6 +96,10 @@ def match_field_to_subtype(
     - coverage_ratio: quota del campo coperta dal subtype assegnato
     - coverage_percent: stessa informazione in percentuale
     - matched_subtypes: dettaglio di tutte le intersezioni trovate
+    - landcover_qc_version: versione del QC utilizzata
+    - landcover_qc_class: classe di qualità (high_confidence, medium_confidence, low_confidence)
+    - usable_for_baseline: indica se il campo è utilizzabile come baseline
+    - matching_layer: nome del layer utilizzato per il matching
 
     Nota scientifica:
     questo NON deduce cultivar. Classifica solo la tipologia di impianto
@@ -126,13 +132,16 @@ def match_field_to_subtype(
         SELECT
             g.subtype_id,
             g.source_layer_version,
+            g.qc_version,
+            g.qc_class,
+            g.usable_for_baseline,
             SUM(
                 ST_Area(
                     ST_Intersection(g.geom, f.geom)::geography
                 )
             ) AS overlap_m2,
             MAX(s.label_it) AS label_it
-        FROM landcover_subtype_geometries g
+        FROM landcover_olive_pure_high_confidence_v2 g
         JOIN landcover_subtypes s
           ON s.id = g.subtype_id
         CROSS JOIN field_area f
@@ -141,12 +150,18 @@ def match_field_to_subtype(
           AND ST_Intersects(g.geom, f.geom)
         GROUP BY
             g.subtype_id,
-            g.source_layer_version
+            g.source_layer_version,
+            g.qc_version,
+            g.qc_class,
+            g.usable_for_baseline
     )
     SELECT
         i.subtype_id,
         i.label_it,
         i.source_layer_version,
+        i.qc_version,
+        i.qc_class,
+        i.usable_for_baseline,
         i.overlap_m2,
         f.area_m2,
         CASE
@@ -174,10 +189,13 @@ def match_field_to_subtype(
             "subtype": row[0],
             "label_it": row[1],
             "source_layer_version": row[2],
-            "overlap_m2": round(float(row[3] or 0), 2),
-            "field_area_m2": round(float(row[4] or 0), 2),
-            "coverage_ratio": round(float(row[5] or 0), 4),
-            "coverage_percent": round(float(row[5] or 0) * 100, 2),
+            "landcover_qc_version": row[3],
+            "landcover_qc_class": row[4],
+            "usable_for_baseline": bool(row[5]),
+            "overlap_m2": round(float(row[6] or 0), 2),
+            "field_area_m2": round(float(row[7] or 0), 2),
+            "coverage_ratio": round(float(row[8] or 0), 4),
+            "coverage_percent": round(float(row[8] or 0) * 100, 2),
         }
         for row in rows
     ]
@@ -191,9 +209,13 @@ def match_field_to_subtype(
             "coverage_ratio": 0.0,
             "coverage_percent": 0.0,
             "matched_subtypes": [],
+            "landcover_qc_version": DEFAULT_QC_VERSION,
+            "landcover_qc_class": None,
+            "usable_for_baseline": False,
+            "matching_layer": DEFAULT_MATCHING_LAYER,
             "note": (
-                "Il campo non interseca i layer CUT olivicoli disponibili. "
-                "Applicato fallback oliveto generico Calabria."
+                "Il campo non interseca aree olive_pure high-confidence QC v2. "
+                "Non idoneo per baseline; applicato fallback descrittivo generico."
             ),
         }
 
@@ -209,9 +231,13 @@ def match_field_to_subtype(
             "coverage_ratio": best["coverage_ratio"],
             "coverage_percent": best["coverage_percent"],
             "matched_subtypes": matched_subtypes,
+            "landcover_qc_version": best.get("landcover_qc_version"),
+            "landcover_qc_class": best.get("landcover_qc_class"),
+            "usable_for_baseline": False,
+            "matching_layer": DEFAULT_MATCHING_LAYER,
             "note": (
-                "Intersezione presente ma copertura insufficiente per assegnare "
-                "con robustezza una tipologia specifica. Applicato fallback generico."
+                "Intersezione con aree olive_pure high-confidence presente ma copertura "
+                "insufficiente per assegnare robustamente il campo alla baseline."
             ),
         }
 
@@ -223,8 +249,12 @@ def match_field_to_subtype(
         "coverage_ratio": best["coverage_ratio"],
         "coverage_percent": best["coverage_percent"],
         "matched_subtypes": matched_subtypes,
+        "landcover_qc_version": best.get("landcover_qc_version"),
+        "landcover_qc_class": best.get("landcover_qc_class"),
+        "usable_for_baseline": confidence == "high" and bool(best.get("usable_for_baseline")),
+        "matching_layer": DEFAULT_MATCHING_LAYER,
         "note": (
-            "Tipologia di impianto assegnata da intersezione spaziale CUT. "
-            "Non rappresenta cultivar."
+            "Tipologia di impianto assegnata da intersezione spaziale con layer "
+            "olive_pure high-confidence QC v2. Non rappresenta cultivar."
         ),
     }

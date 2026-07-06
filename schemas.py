@@ -192,6 +192,11 @@ class LandcoverSubtypeMatch(BaseModel):
     matched_subtypes: List[Dict[str, Any]] = []
     note: Optional[str] = None
 
+    landcover_qc_version: Optional[str] = None
+    landcover_qc_class: Optional[str] = None
+    usable_for_baseline: bool = False
+    matching_layer: Optional[str] = None
+
     model_config = ConfigDict(extra="allow")
 
 

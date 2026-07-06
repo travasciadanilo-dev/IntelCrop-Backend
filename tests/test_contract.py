@@ -108,6 +108,10 @@ def test_analysis_result_contract_accepts_minimal_valid_payload():
                     "coverage_percent": 100.0
                 }
             ],
+            "landcover_qc_version": "olive_pure_geom_qc_v2",
+            "landcover_qc_class": "high_confidence",
+            "usable_for_baseline": True,
+            "matching_layer": "landcover_olive_pure_high_confidence_v2",
             "note": "Tipologia di impianto assegnata da intersezione spaziale CUT. Non rappresenta cultivar."
         },
         "mapLayers": {},
@@ -139,6 +143,9 @@ def test_analysis_result_contract_accepts_minimal_valid_payload():
     assert validated.landcoverSubtype.subtype == "olive_pure"
     assert validated.landcoverSubtype.subtype_confidence == "high"
     assert validated.landcoverSubtype.subtype_layer_version == "cut_calabria_v1"
+    assert validated.landcoverSubtype.landcover_qc_version == "olive_pure_geom_qc_v2"
+    assert validated.landcoverSubtype.landcover_qc_class == "high_confidence"
+    assert validated.landcoverSubtype.usable_for_baseline is True
 
 
 def test_anomaly_threshold_accepts_warning_only_payload():
