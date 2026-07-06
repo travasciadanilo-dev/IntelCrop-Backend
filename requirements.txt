@@ -6,3 +6,4 @@ scipy
 numpy
 python-dotenv
 pytest
+psycopg2-binary
