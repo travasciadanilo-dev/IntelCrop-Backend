@@ -47,3 +47,9 @@ data/raw/
 data/processed/
 
 data/*.geojson
+data/*.qmd
+data/*.shp
+data/*.shx
+data/*.dbf
+data/*.prj
+data/*.cpg
