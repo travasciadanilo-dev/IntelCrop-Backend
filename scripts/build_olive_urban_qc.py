@@ -27,6 +27,7 @@ DYNAMIC_WORLD_END = os.getenv("OLIVE_URBAN_DW_END", "2026-12-31")
 ALLOWED_SOURCE_VIEWS = {
     "landcover_olive_pure_baseline_seed_v1",
     "landcover_olive_pure_high_confidence_v2",
+    "landcover_olive_pure_visual_training_v1",
 }
 
 

@@ -29,6 +29,7 @@ MAX_CLOUD = float(os.getenv("OLIVE_SPECTRAL_MAX_CLOUD", "40"))
 ALLOWED_SOURCE_VIEWS = {
     "landcover_olive_pure_baseline_seed_no_urban_v1",
     "landcover_olive_pure_baseline_seed_v1",
+    "landcover_olive_pure_visual_training_v1",
 }
 
 
