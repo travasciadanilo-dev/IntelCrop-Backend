@@ -2722,6 +2722,22 @@ def run_analysis_core(
         landcover_qc_class=landcover_subtype_match.get("landcover_qc_class"),
         usable_for_baseline=landcover_subtype_match.get("usable_for_baseline"),
         matching_layer=landcover_subtype_match.get("matching_layer"),
+        baseline_version=landcover_subtype_match.get("baseline_version"),
+        baseline_layer=landcover_subtype_match.get("baseline_layer"),
+        baseline_v1_match=landcover_subtype_match.get("baseline_v1_match"),
+        baseline_v1_coverage_percent=landcover_subtype_match.get("baseline_v1_coverage_percent"),
+        urban_qc_version=(
+            landcover_subtype_match.get("baseline_v1") or {}
+        ).get("urban_qc_version"),
+        artificial_flag=(
+            landcover_subtype_match.get("baseline_v1") or {}
+        ).get("artificial_flag"),
+        spectral_qc_version=(
+            landcover_subtype_match.get("baseline_v1") or {}
+        ).get("spectral_qc_version"),
+        spectral_flag=(
+            landcover_subtype_match.get("baseline_v1") or {}
+        ).get("spectral_flag"),
     )
 
     # DEBUG PRINT (solo se abilitato)
