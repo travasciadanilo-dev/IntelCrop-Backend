@@ -11,10 +11,15 @@ load_dotenv()
 
 DEFAULT_SUBTYPE = "olive_generic_calabria"
 DEFAULT_LAYER_VERSION = os.getenv("LANDCOVER_LAYER_VERSION", "cut_calabria_v1")
+
 DEFAULT_QC_VERSION = "olive_pure_geom_qc_v2"
 DEFAULT_MATCHING_LAYER = "landcover_olive_pure_high_confidence_v2"
-DEFAULT_BASELINE_LAYER = "landcover_olive_pure_baseline_v1"
+
 DEFAULT_BASELINE_VERSION = "olive_baseline_v1"
+DEFAULT_BASELINE_LAYER = "landcover_olive_pure_baseline_v1"
+
+DEFAULT_STRICT_BASELINE_VERSION = "olive_baseline_strict_seed_v1"
+DEFAULT_STRICT_BASELINE_LAYER = "landcover_olive_pure_baseline_strict_seed_v1"
 
 HIGH_CONFIDENCE_COVERAGE = float(
     os.getenv("LANDCOVER_HIGH_CONFIDENCE_COVERAGE", "0.75")
@@ -41,10 +46,6 @@ def get_database_url() -> str:
 
 
 def normalize_geojson_geometry(geojson: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Accetta Geometry, Feature o FeatureCollection con una sola feature.
-    Restituisce sempre una Geometry GeoJSON.
-    """
     if not isinstance(geojson, dict):
         raise LandcoverMatchingError("GeoJSON non valido: atteso oggetto JSON.")
 
@@ -82,31 +83,60 @@ def classify_subtype_confidence(coverage_ratio: float) -> str:
     return "low"
 
 
+def build_baseline_match_payload(
+    row,
+    *,
+    baseline_version: str,
+    baseline_layer: str,
+    match_key: str,
+) -> Optional[Dict[str, Any]]:
+    if not row:
+        return None
+
+    coverage_ratio = round(float(row[18] or 0), 4)
+    coverage_percent = round(coverage_ratio * 100, 2)
+    is_match = coverage_ratio >= HIGH_CONFIDENCE_COVERAGE
+
+    return {
+        f"{match_key}_version": baseline_version,
+        f"{match_key}_layer": baseline_layer,
+        f"{match_key}_match": is_match,
+        f"{match_key}_coverage_ratio": coverage_ratio,
+        f"{match_key}_coverage_percent": coverage_percent,
+
+        "subtype": row[0],
+        "label_it": row[1],
+        "source_layer_version": row[2],
+
+        "landcover_qc_version": row[3],
+        "landcover_qc_class": row[4],
+
+        "visual_qc_version": row[5],
+        "visual_label": row[6],
+
+        "urban_qc_version": row[7],
+        "artificial_flag": row[8],
+
+        "spectral_qc_version": row[9],
+        "spectral_flag": row[10],
+        "spectral_n_observations": int(row[11] or 0),
+
+        "ndvi_median": round(float(row[12]), 4) if row[12] is not None else None,
+        "evi_median": round(float(row[13]), 4) if row[13] is not None else None,
+        "ndmi_median": round(float(row[14]), 4) if row[14] is not None else None,
+        "bsi_median": round(float(row[15]), 4) if row[15] is not None else None,
+
+        "overlap_m2": round(float(row[16] or 0), 2),
+        "field_area_m2": round(float(row[17] or 0), 2),
+    }
+
+
 def match_field_to_subtype(
     field_geojson: Dict[str, Any],
     *,
     database_url: Optional[str] = None,
     source_layer_version: str = DEFAULT_LAYER_VERSION,
 ) -> Dict[str, Any]:
-    """
-    Interseca il poligono del campo con i layer CUT caricati in PostGIS.
-
-    Output:
-    - subtype: tipologia di impianto assegnata
-    - subtype_confidence: high / medium / low
-    - subtype_layer_version: versione layer CUT
-    - coverage_ratio: quota del campo coperta dal subtype assegnato
-    - coverage_percent: stessa informazione in percentuale
-    - matched_subtypes: dettaglio di tutte le intersezioni trovate
-    - landcover_qc_version: versione del QC utilizzata
-    - landcover_qc_class: classe di qualità (high_confidence, medium_confidence, low_confidence)
-    - usable_for_baseline: indica se il campo è utilizzabile come baseline
-    - matching_layer: nome del layer utilizzato per il matching
-
-    Nota scientifica:
-    questo NON deduce cultivar. Classifica solo la tipologia di impianto
-    disponibile dal layer CUT: oliveto puro / consociato agrumi / consociato vite.
-    """
     geometry = normalize_geojson_geometry(field_geojson)
     geometry_json = json.dumps(geometry)
 
@@ -175,7 +205,7 @@ def match_field_to_subtype(
     ORDER BY coverage_ratio DESC;
     """
 
-    baseline_query = """
+    baseline_query_template = """
     WITH field_input AS (
         SELECT
             ST_Multi(
@@ -216,7 +246,7 @@ def match_field_to_subtype(
                 )
             ) AS overlap_m2,
             MAX(s.label_it) AS label_it
-        FROM landcover_olive_pure_baseline_v1 b
+        FROM {baseline_layer} b
         JOIN landcover_subtypes s
           ON s.id = b.subtype_id
         CROSS JOIN field_area f
@@ -269,6 +299,14 @@ def match_field_to_subtype(
     LIMIT 1;
     """
 
+    baseline_query = baseline_query_template.format(
+        baseline_layer=DEFAULT_BASELINE_LAYER
+    )
+
+    strict_baseline_query = baseline_query_template.format(
+        baseline_layer=DEFAULT_STRICT_BASELINE_LAYER
+    )
+
     try:
         with psycopg2.connect(dsn) as conn:
             with conn.cursor() as cur:
@@ -277,6 +315,9 @@ def match_field_to_subtype(
 
                 cur.execute(baseline_query, (geometry_json, source_layer_version))
                 baseline_row = cur.fetchone()
+
+                cur.execute(strict_baseline_query, (geometry_json, source_layer_version))
+                strict_baseline_row = cur.fetchone()
 
     except Exception as exc:
         raise LandcoverMatchingError(
@@ -299,44 +340,44 @@ def match_field_to_subtype(
         for row in rows
     ]
 
-    baseline_v1_match = None
+    baseline_v1 = build_baseline_match_payload(
+        baseline_row,
+        baseline_version=DEFAULT_BASELINE_VERSION,
+        baseline_layer=DEFAULT_BASELINE_LAYER,
+        match_key="baseline_v1",
+    )
 
-    if baseline_row:
-        baseline_coverage_ratio = round(float(baseline_row[18] or 0), 4)
-        baseline_coverage_percent = round(baseline_coverage_ratio * 100, 2)
+    strict_baseline_v1 = build_baseline_match_payload(
+        strict_baseline_row,
+        baseline_version=DEFAULT_STRICT_BASELINE_VERSION,
+        baseline_layer=DEFAULT_STRICT_BASELINE_LAYER,
+        match_key="strict_baseline_v1",
+    )
 
-        baseline_v1_match = {
-            "baseline_version": DEFAULT_BASELINE_VERSION,
-            "baseline_layer": DEFAULT_BASELINE_LAYER,
-            "baseline_v1_match": baseline_coverage_ratio >= HIGH_CONFIDENCE_COVERAGE,
-            "baseline_v1_coverage_ratio": baseline_coverage_ratio,
-            "baseline_v1_coverage_percent": baseline_coverage_percent,
+    baseline_v1_match = bool(
+        baseline_v1 and baseline_v1.get("baseline_v1_match")
+    )
 
-            "subtype": baseline_row[0],
-            "label_it": baseline_row[1],
-            "source_layer_version": baseline_row[2],
+    strict_baseline_v1_match = bool(
+        strict_baseline_v1 and strict_baseline_v1.get("strict_baseline_v1_match")
+    )
 
-            "landcover_qc_version": baseline_row[3],
-            "landcover_qc_class": baseline_row[4],
+    common_baseline_payload = {
+        "baseline_version": DEFAULT_BASELINE_VERSION,
+        "baseline_layer": DEFAULT_BASELINE_LAYER,
+        "baseline_v1_match": baseline_v1_match,
+        "baseline_v1_coverage_ratio": baseline_v1.get("baseline_v1_coverage_ratio") if baseline_v1 else 0.0,
+        "baseline_v1_coverage_percent": baseline_v1.get("baseline_v1_coverage_percent") if baseline_v1 else 0.0,
+        "baseline_v1": baseline_v1,
 
-            "visual_qc_version": baseline_row[5],
-            "visual_label": baseline_row[6],
-
-            "urban_qc_version": baseline_row[7],
-            "artificial_flag": baseline_row[8],
-
-            "spectral_qc_version": baseline_row[9],
-            "spectral_flag": baseline_row[10],
-            "spectral_n_observations": int(baseline_row[11] or 0),
-
-            "ndvi_median": round(float(baseline_row[12]), 4) if baseline_row[12] is not None else None,
-            "evi_median": round(float(baseline_row[13]), 4) if baseline_row[13] is not None else None,
-            "ndmi_median": round(float(baseline_row[14]), 4) if baseline_row[14] is not None else None,
-            "bsi_median": round(float(baseline_row[15]), 4) if baseline_row[15] is not None else None,
-
-            "overlap_m2": round(float(baseline_row[16] or 0), 2),
-            "field_area_m2": round(float(baseline_row[17] or 0), 2),
-        }
+        "strict_baseline_version": DEFAULT_STRICT_BASELINE_VERSION,
+        "strict_baseline_layer": DEFAULT_STRICT_BASELINE_LAYER,
+        "strict_baseline_v1_match": strict_baseline_v1_match,
+        "strict_baseline_v1_coverage_ratio": strict_baseline_v1.get("strict_baseline_v1_coverage_ratio") if strict_baseline_v1 else 0.0,
+        "strict_baseline_v1_coverage_percent": strict_baseline_v1.get("strict_baseline_v1_coverage_percent") if strict_baseline_v1 else 0.0,
+        "strict_baseline_v1": strict_baseline_v1,
+        "usable_for_strict_baseline": strict_baseline_v1_match,
+    }
 
     if not matched_subtypes:
         return {
@@ -351,12 +392,7 @@ def match_field_to_subtype(
             "landcover_qc_class": None,
             "usable_for_baseline": False,
             "matching_layer": DEFAULT_MATCHING_LAYER,
-            "baseline_version": DEFAULT_BASELINE_VERSION,
-            "baseline_layer": DEFAULT_BASELINE_LAYER,
-            "baseline_v1_match": False,
-            "baseline_v1_coverage_ratio": 0.0,
-            "baseline_v1_coverage_percent": 0.0,
-            "baseline_v1": None,
+            **common_baseline_payload,
             "note": (
                 "Il campo non interseca aree olive_pure high-confidence QC v2. "
                 "Non idoneo per baseline; applicato fallback descrittivo generico."
@@ -379,14 +415,7 @@ def match_field_to_subtype(
             "landcover_qc_class": best.get("landcover_qc_class"),
             "usable_for_baseline": False,
             "matching_layer": DEFAULT_MATCHING_LAYER,
-            "baseline_version": DEFAULT_BASELINE_VERSION,
-            "baseline_layer": DEFAULT_BASELINE_LAYER,
-            "baseline_v1_match": bool(
-                baseline_v1_match and baseline_v1_match.get("baseline_v1_match")
-            ),
-            "baseline_v1_coverage_ratio": baseline_v1_match.get("baseline_v1_coverage_ratio") if baseline_v1_match else 0.0,
-            "baseline_v1_coverage_percent": baseline_v1_match.get("baseline_v1_coverage_percent") if baseline_v1_match else 0.0,
-            "baseline_v1": baseline_v1_match,
+            **common_baseline_payload,
             "note": (
                 "Intersezione con aree olive_pure high-confidence presente ma copertura "
                 "insufficiente per assegnare robustamente il campo alla baseline."
@@ -403,20 +432,9 @@ def match_field_to_subtype(
         "matched_subtypes": matched_subtypes,
         "landcover_qc_version": best.get("landcover_qc_version"),
         "landcover_qc_class": best.get("landcover_qc_class"),
-        "usable_for_baseline": bool(
-            confidence == "high"
-            and baseline_v1_match
-            and baseline_v1_match.get("baseline_v1_match")
-        ),
+        "usable_for_baseline": bool(confidence == "high" and baseline_v1_match),
         "matching_layer": DEFAULT_MATCHING_LAYER,
-        "baseline_version": DEFAULT_BASELINE_VERSION,
-        "baseline_layer": DEFAULT_BASELINE_LAYER,
-        "baseline_v1_match": bool(
-            baseline_v1_match and baseline_v1_match.get("baseline_v1_match")
-        ),
-        "baseline_v1_coverage_ratio": baseline_v1_match.get("baseline_v1_coverage_ratio") if baseline_v1_match else 0.0,
-        "baseline_v1_coverage_percent": baseline_v1_match.get("baseline_v1_coverage_percent") if baseline_v1_match else 0.0,
-        "baseline_v1": baseline_v1_match,
+        **common_baseline_payload,
         "note": (
             "Tipologia di impianto assegnata da intersezione spaziale con layer "
             "olive_pure high-confidence QC v2. Non rappresenta cultivar."

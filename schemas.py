@@ -204,6 +204,14 @@ class LandcoverSubtypeMatch(BaseModel):
     baseline_v1_coverage_percent: Optional[float] = None
     baseline_v1: Optional[Dict[str, Any]] = None
 
+    strict_baseline_version: Optional[str] = None
+    strict_baseline_layer: Optional[str] = None
+    strict_baseline_v1_match: bool = False
+    strict_baseline_v1_coverage_ratio: Optional[float] = None
+    strict_baseline_v1_coverage_percent: Optional[float] = None
+    strict_baseline_v1: Optional[Dict[str, Any]] = None
+    usable_for_strict_baseline: bool = False
+
     model_config = ConfigDict(extra="allow")
 
 

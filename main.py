@@ -2738,6 +2738,11 @@ def run_analysis_core(
         spectral_flag=(
             landcover_subtype_match.get("baseline_v1") or {}
         ).get("spectral_flag"),
+        strict_baseline_version=landcover_subtype_match.get("strict_baseline_version"),
+        strict_baseline_layer=landcover_subtype_match.get("strict_baseline_layer"),
+        strict_baseline_v1_match=landcover_subtype_match.get("strict_baseline_v1_match"),
+        strict_baseline_v1_coverage_percent=landcover_subtype_match.get("strict_baseline_v1_coverage_percent"),
+        usable_for_strict_baseline=landcover_subtype_match.get("usable_for_strict_baseline"),
     )
 
     # DEBUG PRINT (solo se abilitato)

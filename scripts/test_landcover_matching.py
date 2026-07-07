@@ -29,7 +29,7 @@ def main():
                     id::text,
                     area_ha,
                     spectral_flag
-                FROM landcover_olive_pure_baseline_v1
+                FROM landcover_olive_pure_baseline_strict_seed_v1
                 WHERE subtype_id = 'olive_pure'
                   AND source_layer_version = 'cut_calabria_v1'
                   AND qc_version = 'olive_pure_geom_qc_v2'
@@ -50,7 +50,7 @@ def main():
             row = cur.fetchone()
 
     if not row:
-        raise RuntimeError("Nessuna geometria trovata in landcover_olive_pure_baseline_v1.")
+        raise RuntimeError("Nessuna geometria trovata in landcover_olive_pure_baseline_strict_seed_v1.")
 
     geometry = json.loads(row[0])
     source_id = row[1]
@@ -60,8 +60,8 @@ def main():
     result = match_field_to_subtype(geometry)
 
     print("")
-    print("Baseline v1 source")
-    print("------------------")
+    print("Strict baseline v1 source")
+    print("-------------------------")
     print(f"source_geometry_id: {source_id}")
     print(f"area_ha: {area_ha:.4f}")
     print(f"spectral_flag: {spectral_flag}")
@@ -81,18 +81,31 @@ def main():
     assert result["baseline_layer"] == "landcover_olive_pure_baseline_v1"
     assert result["baseline_v1_match"] is True
     assert result["baseline_v1_coverage_percent"] >= 75.0
-
     assert result["baseline_v1"] is not None
+
+    assert result["strict_baseline_version"] == "olive_baseline_strict_seed_v1"
+    assert result["strict_baseline_layer"] == "landcover_olive_pure_baseline_strict_seed_v1"
+    assert result["strict_baseline_v1_match"] is True
+    assert result["strict_baseline_v1_coverage_percent"] >= 75.0
+    assert result["strict_baseline_v1"] is not None
+    assert result["usable_for_strict_baseline"] is True
+
     assert result["baseline_v1"]["visual_label"] == "olive_like"
     assert result["baseline_v1"]["urban_qc_version"] == "olive_urban_qc_v1"
     assert result["baseline_v1"]["artificial_flag"] in {"none", "low"}
     assert result["baseline_v1"]["spectral_qc_version"] == "olive_spectral_qc_v1"
     assert result["baseline_v1"]["spectral_flag"] in {"strong", "moderate"}
 
+    assert result["strict_baseline_v1"]["visual_label"] == "olive_like"
+    assert result["strict_baseline_v1"]["urban_qc_version"] == "olive_urban_qc_v1"
+    assert result["strict_baseline_v1"]["artificial_flag"] in {"none", "low"}
+    assert result["strict_baseline_v1"]["spectral_qc_version"] == "olive_spectral_qc_v1"
+    assert result["strict_baseline_v1"]["spectral_flag"] in {"strong", "moderate"}
+
     assert result["usable_for_baseline"] is True
 
     print("")
-    print("OK: landcover matching baseline_v1 validato.")
+    print("OK: landcover matching baseline_v1 + strict_baseline_v1 validato.")
 
 
 if __name__ == "__main__":
