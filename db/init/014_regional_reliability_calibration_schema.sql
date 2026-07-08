@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS regional_reliability_model_runs (
     uncertain_n integer NOT NULL DEFAULT 0,
 
     n_features integer NOT NULL,
+    model_intercept numeric,
 
     repeated_cv_folds integer NOT NULL DEFAULT 5,
     repeated_cv_repeats integer NOT NULL DEFAULT 20,
@@ -183,6 +184,7 @@ SELECT
     r.negative_n,
     r.uncertain_n,
     r.n_features,
+    r.model_intercept,
 
     r.mean_precision,
     r.mean_recall,
@@ -199,10 +201,10 @@ SELECT
     r.limitations,
     r.created_at,
 
-    COUNT(c.id) AS n_coefficients,
-    COUNT(t.id) AS n_thresholds,
-    COUNT(s.id) AS n_spatial_cv_zones,
-    COUNT(b.id) AS n_calibration_bins
+    COUNT(DISTINCT c.id) AS n_coefficients,
+    COUNT(DISTINCT t.id) AS n_thresholds,
+    COUNT(DISTINCT s.id) AS n_spatial_cv_zones,
+    COUNT(DISTINCT b.id) AS n_calibration_bins
 
 FROM regional_reliability_model_runs r
 LEFT JOIN regional_reliability_model_coefficients c
@@ -226,6 +228,7 @@ GROUP BY
     r.negative_n,
     r.uncertain_n,
     r.n_features,
+    r.model_intercept,
     r.mean_precision,
     r.mean_recall,
     r.mean_specificity,
