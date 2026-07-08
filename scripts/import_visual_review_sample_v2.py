@@ -15,7 +15,6 @@ DEFAULT_CSV = "data/olive_visual_review_sample_v2.csv"
 
 VALID_VISUAL_LABELS = {"olive_like", "not_olive_like", "uncertain"}
 VALID_PLANTATION_PATTERNS = {"plantation_like", "mixed_or_sparse", "not_assessable"}
-VALID_REVIEW_CONFIDENCE = {"high", "medium", "low"}
 
 
 REQUIRED_COLUMNS = [
@@ -47,7 +46,6 @@ REQUIRED_COLUMNS = [
     "label_lat",
     "visual_label_v2",
     "plantation_pattern_v2",
-    "review_confidence_v2",
     "review_notes_v2",
 ]
 
@@ -116,19 +114,15 @@ def validate_choice(row, column, valid_values, row_number):
     return value
 
 
-def is_complete(visual_label, plantation_pattern, review_confidence):
+def is_complete(visual_label, plantation_pattern):
     return (
         visual_label is not None
         and plantation_pattern is not None
-        and review_confidence is not None
     )
 
 
-def is_training_eligible(visual_label, review_confidence):
-    return (
-        visual_label in {"olive_like", "not_olive_like"}
-        and review_confidence in {"high", "medium"}
-    )
+def is_training_eligible(visual_label):
+    return visual_label in {"olive_like", "not_olive_like"}
 
 
 def read_csv_rows(path, strict=False):
@@ -156,19 +150,13 @@ def read_csv_rows(path, strict=False):
                 VALID_PLANTATION_PATTERNS,
                 row_number,
             )
-            review_confidence = validate_choice(
-                row,
-                "review_confidence_v2",
-                VALID_REVIEW_CONFIDENCE,
-                row_number,
-            )
 
-            complete = is_complete(visual_label, plantation_pattern, review_confidence)
+            complete = is_complete(visual_label, plantation_pattern)
 
             if strict and not complete:
                 raise RuntimeError(
                     f"Riga {row_number}: revisione incompleta. "
-                    "Compilare visual_label_v2, plantation_pattern_v2 e review_confidence_v2."
+                    "Compilare visual_label_v2 e plantation_pattern_v2."
                 )
 
             parsed_rows.append(
@@ -201,13 +189,9 @@ def read_csv_rows(path, strict=False):
                     "label_lat": parse_float(row["label_lat"]),
                     "visual_label_v2": visual_label,
                     "plantation_pattern_v2": plantation_pattern,
-                    "review_confidence_v2": review_confidence,
                     "review_notes_v2": clean_text(row["review_notes_v2"]),
                     "is_complete": complete,
-                    "is_training_eligible": is_training_eligible(
-                        visual_label,
-                        review_confidence,
-                    ),
+                    "is_training_eligible": is_training_eligible(visual_label),
                 }
             )
 
@@ -245,7 +229,6 @@ def upsert_rows(conn, rows, source_file):
             row["label_lat"],
             row["visual_label_v2"],
             row["plantation_pattern_v2"],
-            row["review_confidence_v2"],
             row["review_notes_v2"],
             row["is_complete"],
             row["is_training_eligible"],
@@ -287,7 +270,6 @@ def upsert_rows(conn, rows, source_file):
                 label_lat,
                 visual_label_v2,
                 plantation_pattern_v2,
-                review_confidence_v2,
                 review_notes_v2,
                 is_complete,
                 is_training_eligible,
@@ -323,7 +305,6 @@ def upsert_rows(conn, rows, source_file):
                 label_lat = EXCLUDED.label_lat,
                 visual_label_v2 = EXCLUDED.visual_label_v2,
                 plantation_pattern_v2 = EXCLUDED.plantation_pattern_v2,
-                review_confidence_v2 = EXCLUDED.review_confidence_v2,
                 review_notes_v2 = EXCLUDED.review_notes_v2,
                 is_complete = EXCLUDED.is_complete,
                 is_training_eligible = EXCLUDED.is_training_eligible,

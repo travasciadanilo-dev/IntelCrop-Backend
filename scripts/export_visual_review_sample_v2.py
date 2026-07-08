@@ -289,7 +289,6 @@ def write_geojson(rows, geometries, output_path, metadata):
 
             "visual_label_v2": "",
             "plantation_pattern_v2": "",
-            "review_confidence_v2": "",
             "review_notes_v2": "",
         }
 
@@ -346,7 +345,6 @@ def write_csv(rows, geometries, output_path):
         "label_lat",
         "visual_label_v2",
         "plantation_pattern_v2",
-        "review_confidence_v2",
         "review_notes_v2",
     ]
 
@@ -387,8 +385,7 @@ def write_csv(rows, geometries, output_path):
                     "label_lat": geom_info.get("label_lat"),
                     "visual_label_v2": "",
                     "plantation_pattern_v2": "",
-                    "review_confidence_v2": "",
-                    "review_notes_v2": "",
+                            "review_notes_v2": "",
                 }
             )
 
@@ -459,7 +456,6 @@ def main():
                 "mixed_or_sparse",
                 "not_assessable",
             ],
-            "review_confidence_v2": ["high", "medium", "low"],
         },
         "method_note": (
             "Campione stratificato da candidate_pool_v2. "
