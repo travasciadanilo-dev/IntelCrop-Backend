@@ -306,6 +306,139 @@ def to_geojson(rows):
 
 
 
+
+
+@router.get("/metadata")
+def areas_metadata(
+    entity_id: Optional[str] = Query(
+        default=None,
+        description="ID ente per leggere metadata del catalogo scoped.",
+    ),
+):
+    catalog_view = get_catalog_view(entity_id)
+
+    where_sql, params = build_where_clause(
+        entity_id=entity_id,
+        reliability_class=None,
+        spatial_validation_zone=None,
+        priority_only=False,
+        min_area_ha=None,
+        max_area_ha=None,
+        bbox=None,
+    )
+
+    with get_connection() as conn:
+        entity = validate_entity(conn, entity_id)
+
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                f"""
+                SELECT
+                    COUNT(*) AS n_total,
+                    COUNT(*) FILTER (
+                        WHERE catalog_priority_candidate IS TRUE
+                    ) AS n_priority_candidates,
+                    COUNT(*) FILTER (
+                        WHERE reliability_class = 'very_high'
+                    ) AS n_very_high,
+                    COUNT(*) FILTER (
+                        WHERE reliability_class = 'high'
+                    ) AS n_high,
+                    COUNT(*) FILTER (
+                        WHERE reliability_class = 'compatible'
+                    ) AS n_compatible,
+                    COUNT(*) FILTER (
+                        WHERE reliability_class = 'low'
+                    ) AS n_low,
+                    MIN(reliability_score) AS min_reliability_score,
+                    MAX(reliability_score) AS max_reliability_score,
+                    AVG(reliability_score) AS mean_reliability_score
+                FROM {catalog_view}
+                {where_sql};
+                """,
+                params,
+            )
+
+            catalog_counts = dict(cur.fetchone())
+
+            cur.execute(
+                """
+                SELECT *
+                FROM regional_reliability_model_runs
+                WHERE model_version = 'regional_reliability_score_exp_v3';
+                """
+            )
+
+            model = cur.fetchone()
+
+            if not model:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Metadata modello v3 non trovati nel registry.",
+                )
+
+            cur.execute(
+                """
+                SELECT *
+                FROM regional_reliability_model_thresholds
+                WHERE model_version = 'regional_reliability_score_exp_v3';
+                """
+            )
+
+            thresholds = [dict(row) for row in cur.fetchall()]
+
+            entity_territories = []
+
+            if entity_id:
+                cur.execute(
+                    """
+                    SELECT
+                        territory_id,
+                        territory_name,
+                        territory_scope_version,
+                        territory_status,
+                        source_description
+                    FROM app_entity_territories_v1
+                    WHERE entity_id = %s
+                    ORDER BY territory_id;
+                    """,
+                    (entity_id,),
+                )
+
+                entity_territories = [dict(row) for row in cur.fetchall()]
+
+    return {
+        "catalog": {
+            "catalog_view": catalog_view,
+            "catalog_version": "area_catalog_v1_diagnostic",
+            "catalog_status": "diagnostic_not_final",
+            "scope": "entity" if entity_id else "regional",
+            "entity": entity,
+            "entity_territories": entity_territories,
+            "counts": {
+                key: json_safe(value)
+                for key, value in catalog_counts.items()
+            },
+        },
+        "model": {
+            key: json_safe(value)
+            for key, value in dict(model).items()
+        },
+        "thresholds": [
+            {
+                key: json_safe(value)
+                for key, value in row.items()
+            }
+            for row in thresholds
+        ],
+        "data_policy": {
+            "source_attribution": "Regione Calabria - Repertorio Cartografico regionale, dataset derivati e rielaborati per finalit? diagnostiche.",
+            "license_note": "Usare con attribuzione della fonte e senza implicare approvazione ufficiale del licenziante.",
+            "production_note": "Per uso PA/consorzi sostituire il territorio demo con confini amministrativi o consortili ufficiali versionati.",
+        },
+    }
+
+
 @router.get("/export")
 def export_areas(
     entity_id: Optional[str] = Query(
