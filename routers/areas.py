@@ -304,6 +304,124 @@ def to_geojson(rows):
     }
 
 
+
+
+@router.get("/export")
+def export_areas(
+    entity_id: Optional[str] = Query(
+        default=None,
+        description="ID ente per esportare solo il territorio di competenza.",
+    ),
+    reliability_class: Optional[str] = Query(
+        default=None,
+        description="Filtro classe: low, compatible, high, very_high.",
+    ),
+    spatial_validation_zone: Optional[str] = Query(
+        default=None,
+        description="Filtro zona: north_calabria, central_calabria, south_calabria.",
+    ),
+    priority_only: bool = Query(
+        default=True,
+        description="Se true esporta solo high e very_high diagnostiche.",
+    ),
+    min_area_ha: Optional[float] = Query(
+        default=None,
+        ge=0,
+        description="Area minima in ettari.",
+    ),
+    max_area_ha: Optional[float] = Query(
+        default=None,
+        ge=0,
+        description="Area massima in ettari.",
+    ),
+    bbox: Optional[str] = Query(
+        default=None,
+        description="Bounding box WGS84: minLon,minLat,maxLon,maxLat.",
+    ),
+    output_format: str = Query(
+        default="geojson",
+        pattern="^geojson$",
+        description="Formato export. Per ora supportato: geojson.",
+    ),
+    limit: int = Query(
+        default=5000,
+        ge=1,
+        le=50000,
+    ),
+    offset: int = Query(
+        default=0,
+        ge=0,
+    ),
+):
+    if output_format != "geojson":
+        raise HTTPException(
+            status_code=400,
+            detail="Formato export non supportato. Usa output_format=geojson.",
+        )
+
+    if (
+        min_area_ha is not None
+        and max_area_ha is not None
+        and min_area_ha > max_area_ha
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="min_area_ha non pu? essere maggiore di max_area_ha.",
+        )
+
+    catalog_view = get_catalog_view(entity_id)
+    entity_scoped = entity_id is not None
+
+    where_sql, params = build_where_clause(
+        entity_id=entity_id,
+        reliability_class=reliability_class,
+        spatial_validation_zone=spatial_validation_zone,
+        priority_only=priority_only,
+        min_area_ha=min_area_ha,
+        max_area_ha=max_area_ha,
+        bbox=bbox,
+    )
+
+    with get_connection() as conn:
+        entity = validate_entity(conn, entity_id)
+
+        total = fetch_count(
+            conn=conn,
+            catalog_view=catalog_view,
+            where_sql=where_sql,
+            params=params,
+        )
+
+        rows = fetch_rows(
+            conn=conn,
+            catalog_view=catalog_view,
+            where_sql=where_sql,
+            params=params,
+            limit=limit,
+            offset=offset,
+            include_geometry=True,
+            entity_scoped=entity_scoped,
+        )
+
+    geojson = to_geojson(rows)
+
+    geojson["metadata"] = {
+        "catalog_view": catalog_view,
+        "catalog_status": "diagnostic_not_final",
+        "entity": entity,
+        "export_format": "geojson",
+        "total_matching": total,
+        "exported_features": len(geojson["features"]),
+        "limit": limit,
+        "offset": offset,
+        "priority_only": priority_only,
+        "reliability_class": reliability_class,
+        "spatial_validation_zone": spatial_validation_zone,
+    }
+
+    return geojson
+
+
 @router.get("")
 def list_areas(
     entity_id: Optional[str] = Query(
