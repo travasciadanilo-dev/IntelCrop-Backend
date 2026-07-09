@@ -15,7 +15,8 @@ load_dotenv()
 router = APIRouter(prefix="/areas", tags=["areas"])
 
 
-CATALOG_VIEW = "area_catalog_v1_diagnostic"
+REGIONAL_CATALOG_VIEW = "area_catalog_v1_diagnostic"
+ENTITY_CATALOG_VIEW = "area_catalog_v1_entity_scope"
 
 ALLOWED_RELIABILITY_CLASSES = {
     "low",
@@ -55,7 +56,50 @@ def json_safe(value):
     return value
 
 
+def get_catalog_view(entity_id: Optional[str]):
+    if entity_id:
+        return ENTITY_CATALOG_VIEW
+
+    return REGIONAL_CATALOG_VIEW
+
+
+def validate_entity(conn, entity_id: Optional[str]):
+    if not entity_id:
+        return None
+
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(
+            """
+            SELECT
+                entity_id,
+                entity_name,
+                entity_type,
+                entity_status
+            FROM app_entities_v1
+            WHERE entity_id = %s;
+            """,
+            (entity_id,),
+        )
+
+        row = cur.fetchone()
+
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Ente non trovato: {entity_id}",
+        )
+
+    if row["entity_status"] != "active":
+        raise HTTPException(
+            status_code=403,
+            detail=f"Ente non attivo: {entity_id}",
+        )
+
+    return dict(row)
+
+
 def build_where_clause(
+    entity_id: Optional[str],
     reliability_class: Optional[str],
     spatial_validation_zone: Optional[str],
     priority_only: bool,
@@ -65,6 +109,10 @@ def build_where_clause(
 ):
     where = []
     params = []
+
+    if entity_id:
+        where.append("entity_id = %s")
+        params.append(entity_id)
 
     if reliability_class:
         if reliability_class not in ALLOWED_RELIABILITY_CLASSES:
@@ -128,12 +176,12 @@ def build_where_clause(
     return "WHERE " + " AND ".join(where), params
 
 
-def fetch_count(conn, where_sql, params):
+def fetch_count(conn, catalog_view, where_sql, params):
     with conn.cursor() as cur:
         cur.execute(
             f"""
             SELECT COUNT(*)
-            FROM {CATALOG_VIEW}
+            FROM {catalog_view}
             {where_sql};
             """,
             params,
@@ -142,16 +190,32 @@ def fetch_count(conn, where_sql, params):
         return int(cur.fetchone()[0])
 
 
-def fetch_rows(conn, where_sql, params, limit, offset, include_geometry):
+def fetch_rows(conn, catalog_view, where_sql, params, limit, offset, include_geometry, entity_scoped):
     geometry_sql = ""
 
     if include_geometry:
         geometry_sql = ", ST_AsGeoJSON(geom, 6)::text AS geometry_geojson"
 
+    entity_sql = ""
+
+    if entity_scoped:
+        entity_sql = """
+                entity_id,
+                entity_name,
+                entity_type,
+                entity_status,
+                territory_id,
+                territory_name,
+                territory_scope_version,
+                territory_status,
+        """
+
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
             f"""
             SELECT
+                {entity_sql}
+
                 area_id,
                 region_code,
                 region_label,
@@ -198,7 +262,7 @@ def fetch_rows(conn, where_sql, params, limit, offset, include_geometry):
 
                 {geometry_sql}
 
-            FROM {CATALOG_VIEW}
+            FROM {catalog_view}
             {where_sql}
             ORDER BY reliability_rank DESC, reliability_score DESC, area_id
             LIMIT %s
@@ -242,6 +306,10 @@ def to_geojson(rows):
 
 @router.get("")
 def list_areas(
+    entity_id: Optional[str] = Query(
+        default=None,
+        description="ID ente per filtrare il catalogo sul territorio di competenza.",
+    ),
     reliability_class: Optional[str] = Query(
         default=None,
         description="Filtro classe: low, compatible, high, very_high.",
@@ -306,7 +374,11 @@ def list_areas(
             detail="min_area_ha non può essere maggiore di max_area_ha.",
         )
 
+    catalog_view = get_catalog_view(entity_id)
+    entity_scoped = entity_id is not None
+
     where_sql, params = build_where_clause(
+        entity_id=entity_id,
         reliability_class=reliability_class,
         spatial_validation_zone=spatial_validation_zone,
         priority_only=priority_only,
@@ -316,21 +388,32 @@ def list_areas(
     )
 
     with get_connection() as conn:
-        total = fetch_count(conn, where_sql, params)
+        entity = validate_entity(conn, entity_id)
+
+        total = fetch_count(
+            conn=conn,
+            catalog_view=catalog_view,
+            where_sql=where_sql,
+            params=params,
+        )
+
         rows = fetch_rows(
             conn=conn,
+            catalog_view=catalog_view,
             where_sql=where_sql,
             params=params,
             limit=limit,
             offset=offset,
             include_geometry=include_geometry,
+            entity_scoped=entity_scoped,
         )
 
     if output_format == "geojson":
         geojson = to_geojson(rows)
         geojson["metadata"] = {
-            "catalog_view": CATALOG_VIEW,
+            "catalog_view": catalog_view,
             "catalog_status": "diagnostic_not_final",
+            "entity": entity,
             "total_matching": total,
             "limit": limit,
             "offset": offset,
@@ -338,8 +421,9 @@ def list_areas(
         return geojson
 
     return {
-        "catalog_view": CATALOG_VIEW,
+        "catalog_view": catalog_view,
         "catalog_status": "diagnostic_not_final",
+        "entity": entity,
         "total_matching": total,
         "limit": limit,
         "offset": offset,
@@ -355,8 +439,27 @@ def list_areas(
 
 
 @router.get("/summary")
-def area_summary():
+def area_summary(
+    entity_id: Optional[str] = Query(
+        default=None,
+        description="ID ente per filtrare il riepilogo sul territorio di competenza.",
+    ),
+):
+    catalog_view = get_catalog_view(entity_id)
+
+    where_sql, params = build_where_clause(
+        entity_id=entity_id,
+        reliability_class=None,
+        spatial_validation_zone=None,
+        priority_only=False,
+        min_area_ha=None,
+        max_area_ha=None,
+        bbox=None,
+    )
+
     with get_connection() as conn:
+        entity = validate_entity(conn, entity_id)
+
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 f"""
@@ -366,7 +469,8 @@ def area_summary():
                     ROUND(AVG(reliability_score)::numeric, 4) AS mean_score,
                     ROUND(MIN(reliability_score)::numeric, 4) AS min_score,
                     ROUND(MAX(reliability_score)::numeric, 4) AS max_score
-                FROM {CATALOG_VIEW}
+                FROM {catalog_view}
+                {where_sql}
                 GROUP BY reliability_class
                 ORDER BY
                     CASE reliability_class
@@ -376,7 +480,8 @@ def area_summary():
                         WHEN 'very_high' THEN 4
                         ELSE 9
                     END;
-                """
+                """,
+                params,
             )
 
             by_class = [dict(row) for row in cur.fetchall()]
@@ -387,10 +492,12 @@ def area_summary():
                     spatial_validation_zone,
                     reliability_class,
                     COUNT(*) AS n
-                FROM {CATALOG_VIEW}
+                FROM {catalog_view}
+                {where_sql}
                 GROUP BY spatial_validation_zone, reliability_class
                 ORDER BY spatial_validation_zone, reliability_class;
-                """
+                """,
+                params,
             )
 
             by_zone = [dict(row) for row in cur.fetchall()]
@@ -402,15 +509,18 @@ def area_summary():
                     COUNT(*) FILTER (
                         WHERE catalog_priority_candidate IS TRUE
                     ) AS n_priority_candidates
-                FROM {CATALOG_VIEW};
-                """
+                FROM {catalog_view}
+                {where_sql};
+                """,
+                params,
             )
 
             totals = dict(cur.fetchone())
 
     return {
-        "catalog_view": CATALOG_VIEW,
+        "catalog_view": catalog_view,
         "catalog_status": "diagnostic_not_final",
+        "entity": entity,
         "totals": {
             key: json_safe(value)
             for key, value in totals.items()

@@ -103,3 +103,46 @@ def test_areas_invalid_bbox():
     response = client.get("/areas?bbox=16,39,15,38")
 
     assert response.status_code == 400
+
+def test_areas_entity_summary_contract():
+    response = client.get("/areas/summary?entity_id=calabria_demo")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["catalog_view"] == "area_catalog_v1_entity_scope"
+    assert data["catalog_status"] == "diagnostic_not_final"
+    assert data["entity"]["entity_id"] == "calabria_demo"
+    assert data["entity"]["entity_status"] == "active"
+
+    assert data["totals"]["n_total"] == 40261
+    assert data["totals"]["n_priority_candidates"] == 2706
+
+
+def test_areas_entity_priority_contract():
+    response = client.get(
+        "/areas?entity_id=calabria_demo&priority_only=true&limit=5"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["catalog_view"] == "area_catalog_v1_entity_scope"
+    assert data["catalog_status"] == "diagnostic_not_final"
+    assert data["entity"]["entity_id"] == "calabria_demo"
+    assert data["total_matching"] == 2706
+    assert len(data["items"]) == 5
+
+    for item in data["items"]:
+        assert item["entity_id"] == "calabria_demo"
+        assert item["entity_status"] == "active"
+        assert item["catalog_priority_candidate"] is True
+        assert item["reliability_class"] in {"high", "very_high"}
+
+
+def test_areas_entity_not_found():
+    response = client.get("/areas?entity_id=wrong_entity&limit=5")
+
+    assert response.status_code == 404
