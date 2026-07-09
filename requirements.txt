@@ -10,3 +10,4 @@ psycopg2-binary
 shapely
 pyproj
 scikit-learn
+httpx2
