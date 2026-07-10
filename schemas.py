@@ -260,6 +260,17 @@ class JobError(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
+class BatchJobCreateRequest(BaseModel):
+    entity_id: str
+    area_ids: list[str]
+    analysis_profile: str = "catalog_screening_v1"
+
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
+
+
 class JobCreateResponse(BaseModel):
     job_id: str
     status: Literal["queued"]
