@@ -1,9 +1,12 @@
-﻿BEGIN;
+BEGIN;
 
+DROP VIEW IF EXISTS regional_feature_matrix_training_v2_combined;
+DROP VIEW IF EXISTS regional_feature_matrix_training_v2_spectral;
+DROP VIEW IF EXISTS regional_feature_matrix_training_v2_geometry;
 DROP VIEW IF EXISTS regional_feature_matrix_training_v2_core;
 DROP VIEW IF EXISTS regional_feature_matrix_spectral_diagnostic_v2;
-DROP VIEW IF EXISTS regional_feature_matrix_visual_v2;
 DROP VIEW IF EXISTS regional_feature_matrix_visual_v2_summary;
+DROP VIEW IF EXISTS regional_feature_matrix_visual_v2;
 
 CREATE VIEW regional_feature_matrix_visual_v2 AS
 SELECT
