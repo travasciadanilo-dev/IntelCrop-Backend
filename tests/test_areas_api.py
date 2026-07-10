@@ -233,7 +233,7 @@ def test_area_detail_not_found():
     response = client.get("/areas/area-inesistente")
 
     assert response.status_code == 404
-    assert "non trovata" in response.json()["detail"].lower()
+    assert "area non trovata" in response.json()["detail"].lower()
 
 
 def test_area_detail_wrong_entity():
@@ -245,7 +245,7 @@ def test_area_detail_wrong_entity():
     )
 
     assert response.status_code == 404
-    assert "non trovata" in response.json()["detail"].lower()
+    assert "ente non trovato" in response.json()["detail"].lower()
 
 
 def test_area_detail_inactive_entity():

@@ -304,6 +304,10 @@ def to_geojson(rows):
     }
 
 
+# ================================================================
+# 1. /metadata
+# ================================================================
+
 @router.get("/metadata")
 def areas_metadata(
     entity_id: Optional[str] = Query(
@@ -435,6 +439,10 @@ def areas_metadata(
     }
 
 
+# ================================================================
+# 2. /export
+# ================================================================
+
 @router.get("/export")
 def export_areas(
     entity_id: Optional[str] = Query(
@@ -552,83 +560,115 @@ def export_areas(
 
 
 # ================================================================
-# ENDPOINT DETTAGLIO AREA (NUOVO)
+# 3. /summary
 # ================================================================
 
-@router.get("/{area_id}")
-def get_area_detail(
-    area_id: str,
+@router.get("/summary")
+def area_summary(
     entity_id: Optional[str] = Query(
         default=None,
-        description="ID ente per verificare la disponibilità dell'area nel territorio di competenza.",
-    ),
-    include_geometry: bool = Query(
-        default=True,
-        description="Include la geometria GeoJSON dell'area.",
+        description="ID ente per filtrare il riepilogo sul territorio di competenza.",
     ),
 ):
-    """
-    Recupera il dettaglio di un'area specifica dal catalogo.
-    
-    Args:
-        area_id: ID univoco dell'area nel catalogo
-        entity_id: (Opzionale) ID ente per filtrare sul territorio di competenza
-        include_geometry: Se True, include la geometria GeoJSON
-    
-    Returns:
-        Dettaglio dell'area con tutte le proprietà catalogate
-    """
     catalog_view = get_catalog_view(entity_id)
-    entity_scoped = entity_id is not None
 
-    where = ["area_id = %s"]
-    params = [area_id]
-
-    if entity_id:
-        where.append("entity_id = %s")
-        params.append(entity_id)
-
-    where_sql = "WHERE " + " AND ".join(where)
+    where_sql, params = build_where_clause(
+        entity_id=entity_id,
+        reliability_class=None,
+        spatial_validation_zone=None,
+        priority_only=False,
+        min_area_ha=None,
+        max_area_ha=None,
+        bbox=None,
+    )
 
     with get_connection() as conn:
         entity = validate_entity(conn, entity_id)
 
-        rows = fetch_rows(
-            conn=conn,
-            catalog_view=catalog_view,
-            where_sql=where_sql,
-            params=params,
-            limit=1,
-            offset=0,
-            include_geometry=include_geometry,
-            entity_scoped=entity_scoped,
-        )
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                f"""
+                SELECT
+                    reliability_class,
+                    COUNT(*) AS n,
+                    ROUND(AVG(reliability_score)::numeric, 4) AS mean_score,
+                    ROUND(MIN(reliability_score)::numeric, 4) AS min_score,
+                    ROUND(MAX(reliability_score)::numeric, 4) AS max_score
+                FROM {catalog_view}
+                {where_sql}
+                GROUP BY reliability_class
+                ORDER BY
+                    CASE reliability_class
+                        WHEN 'low' THEN 1
+                        WHEN 'compatible' THEN 2
+                        WHEN 'high' THEN 3
+                        WHEN 'very_high' THEN 4
+                        ELSE 9
+                    END;
+                """,
+                params,
+            )
 
-    if not rows:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Area non trovata o non disponibile per il territorio richiesto: {area_id}",
-        )
+            by_class = [dict(row) for row in cur.fetchall()]
 
-    row = rows[0]
-    geometry_text = row.pop("geometry_geojson", None)
+            cur.execute(
+                f"""
+                SELECT
+                    spatial_validation_zone,
+                    reliability_class,
+                    COUNT(*) AS n
+                FROM {catalog_view}
+                {where_sql}
+                GROUP BY spatial_validation_zone, reliability_class
+                ORDER BY spatial_validation_zone, reliability_class;
+                """,
+                params,
+            )
 
-    geometry = json.loads(geometry_text) if geometry_text else None
+            by_zone = [dict(row) for row in cur.fetchall()]
+
+            cur.execute(
+                f"""
+                SELECT
+                    COUNT(*) AS n_total,
+                    COUNT(*) FILTER (
+                        WHERE catalog_priority_candidate IS TRUE
+                    ) AS n_priority_candidates
+                FROM {catalog_view}
+                {where_sql};
+                """,
+                params,
+            )
+
+            totals = dict(cur.fetchone())
 
     return {
         "catalog_view": catalog_view,
         "catalog_status": "diagnostic_not_final",
         "entity": entity,
-        "area": {
+        "totals": {
             key: json_safe(value)
-            for key, value in row.items()
+            for key, value in totals.items()
         },
-        "geometry": geometry,
+        "by_class": [
+            {
+                key: json_safe(value)
+                for key, value in row.items()
+            }
+            for row in by_class
+        ],
+        "by_zone": [
+            {
+                key: json_safe(value)
+                for key, value in row.items()
+            }
+            for row in by_zone
+        ],
     }
 
 
 # ================================================================
-# ENDPOINT LISTA AREE
+# 4. / (lista aree)
 # ================================================================
 
 @router.get("")
@@ -765,105 +805,77 @@ def list_areas(
     }
 
 
-@router.get("/summary")
-def area_summary(
+# ================================================================
+# 5. /{area_id} (dettaglio area - ULTIMA)
+# ================================================================
+
+@router.get("/{area_id}")
+def get_area_detail(
+    area_id: str,
     entity_id: Optional[str] = Query(
         default=None,
-        description="ID ente per filtrare il riepilogo sul territorio di competenza.",
+        description="ID ente per verificare la disponibilità dell'area nel territorio di competenza.",
+    ),
+    include_geometry: bool = Query(
+        default=True,
+        description="Include la geometria GeoJSON dell'area.",
     ),
 ):
+    """
+    Recupera il dettaglio di un'area specifica dal catalogo.
+    
+    Args:
+        area_id: ID univoco dell'area nel catalogo
+        entity_id: (Opzionale) ID ente per filtrare sul territorio di competenza
+        include_geometry: Se True, include la geometria GeoJSON
+    
+    Returns:
+        Dettaglio dell'area con tutte le proprietà catalogate
+    """
     catalog_view = get_catalog_view(entity_id)
+    entity_scoped = entity_id is not None
 
-    where_sql, params = build_where_clause(
-        entity_id=entity_id,
-        reliability_class=None,
-        spatial_validation_zone=None,
-        priority_only=False,
-        min_area_ha=None,
-        max_area_ha=None,
-        bbox=None,
-    )
+    where = ["area_id = %s"]
+    params = [area_id]
+
+    if entity_id:
+        where.append("entity_id = %s")
+        params.append(entity_id)
+
+    where_sql = "WHERE " + " AND ".join(where)
 
     with get_connection() as conn:
         entity = validate_entity(conn, entity_id)
 
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(
-                f"""
-                SELECT
-                    reliability_class,
-                    COUNT(*) AS n,
-                    ROUND(AVG(reliability_score)::numeric, 4) AS mean_score,
-                    ROUND(MIN(reliability_score)::numeric, 4) AS min_score,
-                    ROUND(MAX(reliability_score)::numeric, 4) AS max_score
-                FROM {catalog_view}
-                {where_sql}
-                GROUP BY reliability_class
-                ORDER BY
-                    CASE reliability_class
-                        WHEN 'low' THEN 1
-                        WHEN 'compatible' THEN 2
-                        WHEN 'high' THEN 3
-                        WHEN 'very_high' THEN 4
-                        ELSE 9
-                    END;
-                """,
-                params,
-            )
+        rows = fetch_rows(
+            conn=conn,
+            catalog_view=catalog_view,
+            where_sql=where_sql,
+            params=params,
+            limit=1,
+            offset=0,
+            include_geometry=include_geometry,
+            entity_scoped=entity_scoped,
+        )
 
-            by_class = [dict(row) for row in cur.fetchall()]
+    if not rows:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Area non trovata o non disponibile per il territorio richiesto: {area_id}",
+        )
 
-            cur.execute(
-                f"""
-                SELECT
-                    spatial_validation_zone,
-                    reliability_class,
-                    COUNT(*) AS n
-                FROM {catalog_view}
-                {where_sql}
-                GROUP BY spatial_validation_zone, reliability_class
-                ORDER BY spatial_validation_zone, reliability_class;
-                """,
-                params,
-            )
+    row = rows[0]
+    geometry_text = row.pop("geometry_geojson", None)
 
-            by_zone = [dict(row) for row in cur.fetchall()]
-
-            cur.execute(
-                f"""
-                SELECT
-                    COUNT(*) AS n_total,
-                    COUNT(*) FILTER (
-                        WHERE catalog_priority_candidate IS TRUE
-                    ) AS n_priority_candidates
-                FROM {catalog_view}
-                {where_sql};
-                """,
-                params,
-            )
-
-            totals = dict(cur.fetchone())
+    geometry = json.loads(geometry_text) if geometry_text else None
 
     return {
         "catalog_view": catalog_view,
         "catalog_status": "diagnostic_not_final",
         "entity": entity,
-        "totals": {
+        "area": {
             key: json_safe(value)
-            for key, value in totals.items()
+            for key, value in row.items()
         },
-        "by_class": [
-            {
-                key: json_safe(value)
-                for key, value in row.items()
-            }
-            for row in by_class
-        ],
-        "by_zone": [
-            {
-                key: json_safe(value)
-                for key, value in row.items()
-            }
-            for row in by_zone
-        ],
+        "geometry": geometry,
     }
