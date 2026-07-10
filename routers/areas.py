@@ -304,10 +304,6 @@ def to_geojson(rows):
     }
 
 
-
-
-
-
 @router.get("/metadata")
 def areas_metadata(
     entity_id: Optional[str] = Query(
@@ -554,6 +550,86 @@ def export_areas(
 
     return geojson
 
+
+# ================================================================
+# ENDPOINT DETTAGLIO AREA (NUOVO)
+# ================================================================
+
+@router.get("/{area_id}")
+def get_area_detail(
+    area_id: str,
+    entity_id: Optional[str] = Query(
+        default=None,
+        description="ID ente per verificare la disponibilità dell'area nel territorio di competenza.",
+    ),
+    include_geometry: bool = Query(
+        default=True,
+        description="Include la geometria GeoJSON dell'area.",
+    ),
+):
+    """
+    Recupera il dettaglio di un'area specifica dal catalogo.
+    
+    Args:
+        area_id: ID univoco dell'area nel catalogo
+        entity_id: (Opzionale) ID ente per filtrare sul territorio di competenza
+        include_geometry: Se True, include la geometria GeoJSON
+    
+    Returns:
+        Dettaglio dell'area con tutte le proprietà catalogate
+    """
+    catalog_view = get_catalog_view(entity_id)
+    entity_scoped = entity_id is not None
+
+    where = ["area_id = %s"]
+    params = [area_id]
+
+    if entity_id:
+        where.append("entity_id = %s")
+        params.append(entity_id)
+
+    where_sql = "WHERE " + " AND ".join(where)
+
+    with get_connection() as conn:
+        entity = validate_entity(conn, entity_id)
+
+        rows = fetch_rows(
+            conn=conn,
+            catalog_view=catalog_view,
+            where_sql=where_sql,
+            params=params,
+            limit=1,
+            offset=0,
+            include_geometry=include_geometry,
+            entity_scoped=entity_scoped,
+        )
+
+    if not rows:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Area non trovata o non disponibile per il territorio richiesto: {area_id}",
+        )
+
+    row = rows[0]
+    geometry_text = row.pop("geometry_geojson", None)
+
+    geometry = json.loads(geometry_text) if geometry_text else None
+
+    return {
+        "catalog_view": catalog_view,
+        "catalog_status": "diagnostic_not_final",
+        "entity": entity,
+        "area": {
+            key: json_safe(value)
+            for key, value in row.items()
+        },
+        "geometry": geometry,
+    }
+
+
+# ================================================================
+# ENDPOINT LISTA AREE
+# ================================================================
 
 @router.get("")
 def list_areas(

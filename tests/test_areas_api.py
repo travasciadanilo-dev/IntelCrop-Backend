@@ -104,6 +104,7 @@ def test_areas_invalid_bbox():
 
     assert response.status_code == 400
 
+
 def test_areas_entity_summary_contract():
     response = client.get("/areas/summary?entity_id=calabria_demo")
 
@@ -146,3 +147,117 @@ def test_areas_entity_not_found():
     response = client.get("/areas?entity_id=wrong_entity&limit=5")
 
     assert response.status_code == 404
+
+
+# ================================================================
+# TEST ENDPOINT DETTAGLIO AREA (NUOVI)
+# ================================================================
+
+TEST_AREA_ID = "4b31bdff-e0e2-423e-b5fa-66352b1e6798"
+
+
+def test_area_detail_contract():
+    """
+    Testa il recupero del dettaglio di un'area specifica.
+    """
+    response = client.get(f"/areas/{TEST_AREA_ID}")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    # Verifica struttura catalogo
+    assert data["catalog_view"] == "area_catalog_v1_diagnostic"
+    assert data["catalog_status"] == "diagnostic_not_final"
+    assert data["entity"] is None
+
+    # Verifica area
+    assert data["area"]["area_id"] == TEST_AREA_ID
+    assert data["area"]["catalog_version"] == "area_catalog_v1_diagnostic"
+    assert data["area"]["reliability_model_version"] == (
+        "regional_reliability_score_exp_v3"
+    )
+    
+    # Verifica presenza campi obbligatori
+    assert "area_ha" in data["area"]
+    assert "reliability_class" in data["area"]
+    assert "reliability_score" in data["area"]
+    assert "centroid_lon" in data["area"]
+    assert "centroid_lat" in data["area"]
+
+    # Verifica geometria
+    assert data["geometry"] is not None
+    assert data["geometry"]["type"] in {"Polygon", "MultiPolygon"}
+    assert "coordinates" in data["geometry"]
+
+
+def test_area_detail_entity_scope_contract():
+    """
+    Testa il recupero del dettaglio di un'area con scope ente.
+    """
+    response = client.get(
+        f"/areas/{TEST_AREA_ID}?entity_id=calabria_demo"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["catalog_view"] == "area_catalog_v1_entity_scope"
+    assert data["entity"]["entity_id"] == "calabria_demo"
+    assert data["entity"]["entity_status"] == "active"
+    assert data["area"]["entity_id"] == "calabria_demo"
+    assert data["area"]["area_id"] == TEST_AREA_ID
+
+
+def test_area_detail_without_geometry():
+    """
+    Testa il recupero del dettaglio di un'area senza geometria.
+    """
+    response = client.get(
+        f"/areas/{TEST_AREA_ID}?include_geometry=false"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["area"]["area_id"] == TEST_AREA_ID
+    assert data["geometry"] is None
+
+
+def test_area_detail_not_found():
+    """
+    Testa il recupero di un'area inesistente.
+    """
+    response = client.get("/areas/area-inesistente")
+
+    assert response.status_code == 404
+    assert "non trovata" in response.json()["detail"].lower()
+
+
+def test_area_detail_wrong_entity():
+    """
+    Testa il recupero di un'area con ente non valido.
+    """
+    response = client.get(
+        f"/areas/{TEST_AREA_ID}?entity_id=wrong_entity"
+    )
+
+    assert response.status_code == 404
+    assert "non trovata" in response.json()["detail"].lower()
+
+
+def test_area_detail_inactive_entity():
+    """
+    Testa il recupero di un'area con ente inattivo.
+    """
+    # Nota: questo test assume che esista un ente inattivo nel database
+    # In produzione, si potrebbe mockare la risposta del database
+    response = client.get(
+        f"/areas/{TEST_AREA_ID}?entity_id=inactive_entity"
+    )
+
+    # Se l'ente esiste ma è inattivo, dovrebbe restituire 403
+    # Se non esiste, 404
+    assert response.status_code in {403, 404}
