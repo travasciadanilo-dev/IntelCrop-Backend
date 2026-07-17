@@ -1,8 +1,8 @@
-\# IntelCrop — Area Catalog v1 Diagnostic
+# IntelCrop — Area Catalog v1 Diagnostic
 
 
 
-\## 1. Stato
+## 1. Stato
 
 
 
@@ -10,19 +10,19 @@
 
 |---|---|
 
-| Catalog version | `area\_catalog\_v1\_diagnostic` |
+| Catalog version | `area_catalog_v1_diagnostic` |
 
-| Catalog status | `diagnostic\_not\_final` |
+| Catalog status | `diagnostic_not_final` |
 
-| Model version | `regional\_reliability\_score\_exp\_v3` |
+| Model version | `regional_reliability_score_exp_v3` |
 
 | Model status | `experimental` |
 
 | Geographic scope | Calabria |
 
-| Source pool | `candidate\_pool\_v2\_area\_ge\_0\_5` |
+| Source pool | `candidate_pool_v2_area_ge_0_5` |
 
-| Training sample | `olive\_visual\_review\_sample\_v2` |
+| Training sample | `olive_visual_review_sample_v2` |
 
 | Training observations | 406 |
 
@@ -42,7 +42,7 @@ come unica fonte per decisioni amministrative, contributive o sanzionatorie.
 
 
 
-\## 2. Obiettivo
+## 2. Obiettivo
 
 
 
@@ -82,7 +82,7 @@ Il catalogo non sostituisce:
 
 
 
-\## 3. Numerosità corrente
+## 3. Numerosità corrente
 
 
 
@@ -104,13 +104,13 @@ Il catalogo non sostituisce:
 
 
 
-Le aree `high` e `very\_high` costituiscono le candidate prioritarie
+Le aree `high` e `very_high` costituiscono le candidate prioritarie
 
 diagnostiche.
 
 
 
-\## 4. Classi di affidabilità
+## 4. Classi di affidabilità
 
 
 
@@ -124,7 +124,7 @@ diagnostiche.
 
 | `high` | 0,70–0,85 | Area candidata per approfondimento operativo |
 
-| `very\_high` | 0,85–1,00 | Area candidata prioritaria |
+| `very_high` | 0,85–1,00 | Area candidata prioritaria |
 
 
 
@@ -132,7 +132,7 @@ Le soglie sono sperimentali e versionate insieme al modello.
 
 
 
-\## 5. Modello v3
+## 5. Modello v3
 
 
 
@@ -166,13 +166,13 @@ Le feature comprendono:
 
 
 
-Il campo `plantation\_pattern\_v2` è mantenuto per audit e controllo visuale ma
+Il campo `plantation_pattern_v2` è mantenuto per audit e controllo visuale ma
 
 non viene usato come predittore automatico.
 
 
 
-\### Metriche correnti
+### Metriche correnti
 
 
 
@@ -206,7 +206,7 @@ screening, ma non ancora sufficiente per una validazione definitiva.
 
 
 
-\## 6. Limitazioni principali
+## 6. Limitazioni principali
 
 
 
@@ -214,7 +214,7 @@ screening, ma non ancora sufficiente per una validazione definitiva.
 
 &#x20;  dell'intero territorio regionale.
 
-2\. Il nord Calabria e le aree `added\_candidate` sono sovracampionate.
+2\. Il nord Calabria e le aree `added_candidate` sono sovracampionate.
 
 3\. Le probabilità devono essere interpretate come score operativo, non come
 
@@ -240,19 +240,80 @@ screening, ma non ancora sufficiente per una validazione definitiva.
 
 
 
-\## 7. Database
+## 7. Database
 
 
 
-\### View principali
+### View principali
 
 
 
 ```text
 
-olive\_candidate\_pool\_v2\_reliability\_v3\_diagnostic\_v1
+olive_candidate_pool_v2_reliability_v3_diagnostic_v1
 
-area\_catalog\_v1\_diagnostic
+area_catalog_v1_diagnostic
 
-area\_catalog\_v1\_entity\_scope
+area_catalog_v1_entity_scope
 
+## Catalogo regionale v4.1
+
+### Stato
+
+Il catalogo regionale v4.1 è una versione derivata e validata, ma non ancora promossa come catalogo operativo predefinito.
+
+Stato pubblico: `validated_not_promoted`.
+
+Il backend continua a utilizzare il catalogo v3 salvo configurazione esplicita tramite `AREA_CATALOG_VERSION=v4_1`.
+
+### Classificazione
+
+Schema pubblico:
+
+- `low`: `0.00 <= score < 0.61`
+- `compatible`: `0.61 <= score < 0.82`
+- `very_high`: `0.82 <= score <= 1.00`
+
+La classe storica `high` resta nei metadati originari del modello v4 per tracciabilità, ma non viene esposta come classe autonoma dall'API v4.1.
+
+### Validazione visuale
+
+Versione: `regional_reliability_v4_1_visual_validation_20260717`.
+
+Risultati principali:
+
+- catalogo regionale: 40.261 aree;
+- campione visuale: 240 aree;
+- record valutabili: 184;
+- record non valutabili: 56;
+- quota valutabile pesata: 80,01%;
+- compatibilità pesata tra i valutabili: 61,02%;
+- intervallo di confidenza 95%: 53,30–68,59%.
+
+Le classi originali `compatible` e `high` mostravano tassi positivi pesati del 60,31% e del 61,70%. La differenza era di 1,39 punti percentuali; il test esatto di Fisher non ha supportato la separazione (`odds ratio = 0.8235`, `p = 0.821891`).
+
+### API e job
+
+Con `AREA_CATALOG_VERSION=v4_1` vengono utilizzati:
+
+- `area_catalog_v4_1_diagnostic`;
+- `area_catalog_v4_1_entity_scope`;
+- `regional_reliability_score_exp_v4_combined_ridge`.
+
+`GET /areas/metadata` espone soltanto `low`, `compatible` e `very_high`.
+
+I job batch vengono creati tramite `POST /jobs/batch`. La geometria non viene fornita dal client: lo snapshot viene recuperato dal catalogo selezionato dal backend.
+
+Il worker è `scripts/process_analysis_jobs_v1.py` e registra in modo coerente catalogo, modello, snapshot e risultato.
+
+### Migrazioni
+
+- `db/init/033_regional_reliability_v4_1_validation_catalog.sql`
+- `db/init/034_regional_reliability_v4_1_validation_run.sql`
+
+### Test
+
+- v3: 42 test superati, 1 ignorato;
+- v4.1: 37 test superati, 1 ignorato.
+
+Il catalogo v4.1 non deve essere promosso implicitamente. La promozione richiederà una decisione esplicita e una nuova validazione completa.
