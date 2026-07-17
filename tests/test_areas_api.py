@@ -1,3 +1,15 @@
+import os
+
+import pytest
+
+
+if os.getenv("AREA_CATALOG_VERSION", "v3").strip().lower() != "v3":
+    pytest.skip(
+        "Suite areas v3: richiede AREA_CATALOG_VERSION=v3",
+        allow_module_level=True,
+    )
+
+
 from fastapi.testclient import TestClient
 
 from main import app

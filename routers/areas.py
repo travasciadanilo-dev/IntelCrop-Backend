@@ -15,15 +15,81 @@ load_dotenv()
 router = APIRouter(prefix="/areas", tags=["areas"])
 
 
-REGIONAL_CATALOG_VIEW = "area_catalog_v1_diagnostic"
-ENTITY_CATALOG_VIEW = "area_catalog_v1_entity_scope"
-
-ALLOWED_RELIABILITY_CLASSES = {
-    "low",
-    "compatible",
-    "high",
-    "very_high",
+CATALOG_CONFIGS = {
+    "v3": {
+        "regional_view": "area_catalog_v1_diagnostic",
+        "entity_view": "area_catalog_v1_entity_scope",
+        "catalog_version": "area_catalog_v1_diagnostic",
+        "catalog_status": "diagnostic_not_final",
+        "model_version": "regional_reliability_score_exp_v3",
+        "allowed_reliability_classes": {
+            "low",
+            "compatible",
+            "high",
+            "very_high",
+        },
+    },
+    "v4_1": {
+        "regional_view": "area_catalog_v4_1_diagnostic",
+        "entity_view": "area_catalog_v4_1_entity_scope",
+        "catalog_version": "area_catalog_v4_1_diagnostic",
+        "catalog_status": "validated_not_promoted",
+        "model_version": (
+            "regional_reliability_score_exp_v4_combined_ridge"
+        ),
+        "allowed_reliability_classes": {
+            "low",
+            "compatible",
+            "very_high",
+        },
+    },
 }
+
+
+AREA_CATALOG_VERSION = (
+    os.getenv("AREA_CATALOG_VERSION", "v3")
+    .strip()
+    .lower()
+)
+
+if AREA_CATALOG_VERSION not in CATALOG_CONFIGS:
+    raise RuntimeError(
+        "AREA_CATALOG_VERSION non valida: "
+        f"{AREA_CATALOG_VERSION}. "
+        "Valori ammessi: v3, v4_1"
+    )
+
+
+ACTIVE_CATALOG_CONFIG = CATALOG_CONFIGS[
+    AREA_CATALOG_VERSION
+]
+
+REGIONAL_CATALOG_VIEW = ACTIVE_CATALOG_CONFIG[
+    "regional_view"
+]
+
+ENTITY_CATALOG_VIEW = ACTIVE_CATALOG_CONFIG[
+    "entity_view"
+]
+
+ACTIVE_CATALOG_VERSION = ACTIVE_CATALOG_CONFIG[
+    "catalog_version"
+]
+
+ACTIVE_CATALOG_STATUS = ACTIVE_CATALOG_CONFIG[
+    "catalog_status"
+]
+
+ACTIVE_MODEL_VERSION = ACTIVE_CATALOG_CONFIG[
+    "model_version"
+]
+
+ALLOWED_RELIABILITY_CLASSES = set(
+    ACTIVE_CATALOG_CONFIG[
+        "allowed_reliability_classes"
+    ]
+)
+
 
 ALLOWED_ZONES = {
     "north_calabria",
@@ -365,8 +431,9 @@ def areas_metadata(
                 """
                 SELECT *
                 FROM regional_reliability_model_runs
-                WHERE model_version = 'regional_reliability_score_exp_v3';
-                """
+                WHERE model_version = %s;
+                """,
+                (ACTIVE_MODEL_VERSION,),
             )
 
             model = cur.fetchone()
@@ -374,15 +441,19 @@ def areas_metadata(
             if not model:
                 raise HTTPException(
                     status_code=500,
-                    detail="Metadata modello v3 non trovati nel registry.",
+                    detail=(
+                        "Metadata modello non trovati nel registry: "
+                        f"{ACTIVE_MODEL_VERSION}"
+                    ),
                 )
 
             cur.execute(
                 """
                 SELECT *
                 FROM regional_reliability_model_thresholds
-                WHERE model_version = 'regional_reliability_score_exp_v3';
-                """
+                WHERE model_version = %s;
+                """,
+                (ACTIVE_MODEL_VERSION,),
             )
 
             thresholds = [dict(row) for row in cur.fetchall()]
@@ -410,8 +481,8 @@ def areas_metadata(
     return {
         "catalog": {
             "catalog_view": catalog_view,
-            "catalog_version": "area_catalog_v1_diagnostic",
-            "catalog_status": "diagnostic_not_final",
+            "catalog_version": ACTIVE_CATALOG_VERSION,
+            "catalog_status": ACTIVE_CATALOG_STATUS,
             "scope": "entity" if entity_id else "regional",
             "entity": entity,
             "entity_territories": entity_territories,
@@ -451,7 +522,9 @@ def export_areas(
     ),
     reliability_class: Optional[str] = Query(
         default=None,
-        description="Filtro classe: low, compatible, high, very_high.",
+        description=(
+            "Filtro per classe disponibile nel catalogo attivo."
+        ),
     ),
     spatial_validation_zone: Optional[str] = Query(
         default=None,
@@ -459,7 +532,10 @@ def export_areas(
     ),
     priority_only: bool = Query(
         default=True,
-        description="Se true esporta solo high e very_high diagnostiche.",
+        description=(
+            "Se true esporta solo le aree prioritarie "
+            "del catalogo attivo."
+        ),
     ),
     min_area_ha: Optional[float] = Query(
         default=None,
@@ -544,7 +620,7 @@ def export_areas(
 
     geojson["metadata"] = {
         "catalog_view": catalog_view,
-        "catalog_status": "diagnostic_not_final",
+        "catalog_status": ACTIVE_CATALOG_STATUS,
         "entity": entity,
         "export_format": "geojson",
         "total_matching": total,
@@ -644,7 +720,7 @@ def area_summary(
 
     return {
         "catalog_view": catalog_view,
-        "catalog_status": "diagnostic_not_final",
+        "catalog_status": ACTIVE_CATALOG_STATUS,
         "entity": entity,
         "totals": {
             key: json_safe(value)
@@ -679,7 +755,9 @@ def list_areas(
     ),
     reliability_class: Optional[str] = Query(
         default=None,
-        description="Filtro classe: low, compatible, high, very_high.",
+        description=(
+            "Filtro per classe disponibile nel catalogo attivo."
+        ),
     ),
     spatial_validation_zone: Optional[str] = Query(
         default=None,
@@ -687,7 +765,10 @@ def list_areas(
     ),
     priority_only: bool = Query(
         default=False,
-        description="Se true restituisce solo high e very_high diagnostiche.",
+        description=(
+            "Se true restituisce solo le aree prioritarie "
+            "del catalogo attivo."
+        ),
     ),
     min_area_ha: Optional[float] = Query(
         default=None,
@@ -779,7 +860,7 @@ def list_areas(
         geojson = to_geojson(rows)
         geojson["metadata"] = {
             "catalog_view": catalog_view,
-            "catalog_status": "diagnostic_not_final",
+            "catalog_status": ACTIVE_CATALOG_STATUS,
             "entity": entity,
             "total_matching": total,
             "limit": limit,
@@ -789,7 +870,7 @@ def list_areas(
 
     return {
         "catalog_view": catalog_view,
-        "catalog_status": "diagnostic_not_final",
+        "catalog_status": ACTIVE_CATALOG_STATUS,
         "entity": entity,
         "total_matching": total,
         "limit": limit,
@@ -871,7 +952,7 @@ def get_area_detail(
 
     return {
         "catalog_view": catalog_view,
-        "catalog_status": "diagnostic_not_final",
+        "catalog_status": ACTIVE_CATALOG_STATUS,
         "entity": entity,
         "area": {
             key: json_safe(value)
