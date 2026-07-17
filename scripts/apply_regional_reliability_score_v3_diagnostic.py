@@ -8,7 +8,6 @@ import psycopg2
 from dotenv import load_dotenv
 from psycopg2.extras import RealDictCursor, execute_values
 
-
 load_dotenv()
 
 
@@ -479,13 +478,43 @@ def print_summary(conn):
     )
 
 
-def main():
+# ----- NUOVA FUNZIONE DI CONNESSIONE -----
+def database_connection():
     database_url = os.getenv("DATABASE_URL")
 
-    if not database_url:
-        raise RuntimeError("DATABASE_URL non configurato in .env")
+    if database_url:
+        return psycopg2.connect(database_url)
 
-    with psycopg2.connect(database_url) as conn:
+    return psycopg2.connect(
+        host=(
+            os.getenv("POSTGRES_HOST")
+            or os.getenv("DB_HOST")
+            or "localhost"
+        ),
+        port=int(
+            os.getenv("POSTGRES_PORT")
+            or os.getenv("DB_PORT")
+            or "5432"
+        ),
+        dbname=(
+            os.getenv("POSTGRES_DB")
+            or os.getenv("DB_NAME")
+            or "intellcrop"
+        ),
+        user=(
+            os.getenv("POSTGRES_USER")
+            or os.getenv("DB_USER")
+            or "intellcrop"
+        ),
+        password=(
+            os.getenv("POSTGRES_PASSWORD")
+            or os.getenv("DB_PASSWORD")
+        ),
+    )
+
+
+def main():
+    with database_connection() as conn:
         model_run = fetch_model_run(conn)
         coefficients = fetch_coefficients(conn)
         candidates = fetch_candidates(conn)
