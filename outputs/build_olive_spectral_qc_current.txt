@@ -30,8 +30,6 @@ ALLOWED_SOURCE_VIEWS = {
     "landcover_olive_pure_baseline_seed_no_urban_v1",
     "landcover_olive_pure_baseline_seed_v1",
     "landcover_olive_pure_visual_training_v1",
-    "landcover_olive_visual_training_v2_missing_spectral_v1",
-    "landcover_olive_visual_training_v2_missing_spectral_v1",
 }
 
 
@@ -115,31 +113,17 @@ def add_indices(image):
 
     ndvi = nir.subtract(red).divide(nir.add(red)).rename("NDVI")
 
-    # --- EVI con gestione del denominatore e maschera ---
-    evi_denominator = (
-        nir
-        .add(red.multiply(6))
-        .subtract(blue.multiply(7.5))
-        .add(1)
-    )
-
     evi = (
         nir.subtract(red)
         .multiply(2.5)
-        .divide(evi_denominator)
+        .divide(
+            nir
+            .add(red.multiply(6))
+            .subtract(blue.multiply(7.5))
+            .add(1)
+        )
         .rename("EVI")
     )
-
-    evi = evi.updateMask(
-        evi_denominator.abs().gte(0.05)
-    )
-
-    evi = evi.updateMask(
-        evi.gte(-1.0).And(
-            evi.lte(1.0)
-        )
-    )
-    # -------------------------------------------------
 
     ndmi = nir.subtract(swir1).divide(nir.add(swir1)).rename("NDMI")
 
