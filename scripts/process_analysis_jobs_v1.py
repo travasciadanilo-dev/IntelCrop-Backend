@@ -243,14 +243,14 @@ def build_catalog_screening_result(
                 "satellitari."
             ),
             (
-                "Il modello regionale di affidabilit? "
+                "Il modello regionale di affidabilità "
                 + (
                     "v4.1"
                     if job["catalog_version"]
                     == "area_catalog_v4_1_diagnostic"
                     else "v3"
                 )
-                + " ? sperimentale e non costituisce validazione "
+                + " è sperimentale e non costituisce validazione "
                 "assoluta della coltura."
             ),
         ],
