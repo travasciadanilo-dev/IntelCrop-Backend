@@ -188,6 +188,65 @@ def test_v4_1_metadata_contract():
     )
 
 
+    public_thresholds = data["thresholds"]
+
+    assert [
+        row["class_code"]
+        for row in public_thresholds
+    ] == [
+        "low",
+        "compatible",
+        "very_high",
+    ]
+
+    threshold_by_class = {
+        row["class_code"]: row
+        for row in public_thresholds
+    }
+
+    assert threshold_by_class["low"]["min_score"] == 0.0
+    assert threshold_by_class["low"]["max_score"] == 0.61
+    assert threshold_by_class["low"]["class_rank"] == 1
+
+    assert (
+        threshold_by_class["compatible"]["min_score"]
+        == 0.61
+    )
+    assert (
+        threshold_by_class["compatible"]["max_score"]
+        == 0.82
+    )
+    assert (
+        threshold_by_class["compatible"]["class_rank"]
+        == 2
+    )
+
+    assert (
+        threshold_by_class["very_high"]["min_score"]
+        == 0.82
+    )
+    assert (
+        threshold_by_class["very_high"]["max_score"]
+        == 1.0
+    )
+    assert (
+        threshold_by_class["very_high"]["class_rank"]
+        == 3
+    )
+
+    model_thresholds = data["model"]["metadata"]["thresholds"]
+
+    assert set(model_thresholds) == {
+        "low",
+        "compatible",
+        "very_high",
+    }
+    assert (
+        model_thresholds["compatible"]["maximum_exclusive"]
+        == 0.82
+    )
+
+
 def test_v4_1_entity_summary_contract():
     response = client.get(
         "/areas/summary?entity_id=calabria_demo"
