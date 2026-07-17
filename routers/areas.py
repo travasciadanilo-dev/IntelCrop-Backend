@@ -122,6 +122,114 @@ def json_safe(value):
     return value
 
 
+
+def normalize_public_thresholds(
+    thresholds: list[dict],
+) -> list[dict]:
+    """
+    Espone le soglie coerenti con il catalogo selezionato.
+
+    Il modello v4 conserva le quattro soglie originarie, mentre
+    il catalogo derivato v4.1 unisce compatible e high.
+    """
+    rows = [dict(row) for row in thresholds]
+
+    if AREA_CATALOG_VERSION != "v4_1":
+        return rows
+
+    by_class = {
+        row.get("class_code"): row
+        for row in rows
+    }
+
+    low = by_class.get("low")
+    compatible = by_class.get("compatible")
+    high = by_class.get("high")
+    very_high = by_class.get("very_high")
+
+    normalized = []
+
+    if low is not None:
+        low["class_rank"] = 1
+        normalized.append(low)
+
+    if compatible is not None:
+        compatible["class_label_it"] = "Compatibile"
+        compatible["class_rank"] = 2
+
+        if high is not None and high.get("max_score") is not None:
+            compatible["max_score"] = high["max_score"]
+        elif (
+            very_high is not None
+            and very_high.get("min_score") is not None
+        ):
+            compatible["max_score"] = very_high["min_score"]
+
+        compatible["recommended_use"] = (
+            "Area compatibile con l'identit? olivicola attesa; "
+            "utilizzabile per screening territoriale, mantenendo "
+            "tracciabilit? e limiti metodologici."
+        )
+        normalized.append(compatible)
+
+    if very_high is not None:
+        very_high["class_rank"] = 3
+        normalized.append(very_high)
+
+    return normalized
+
+
+def normalize_model_metadata(
+    model: dict,
+) -> dict:
+    """
+    Allinea metadata.thresholds alla classificazione pubblica v4.1
+    senza modificare il registro storico nel database.
+    """
+    normalized = dict(model)
+
+    if AREA_CATALOG_VERSION != "v4_1":
+        return normalized
+
+    metadata = normalized.get("metadata")
+
+    if not isinstance(metadata, dict):
+        return normalized
+
+    metadata = dict(metadata)
+    normalized["metadata"] = metadata
+
+    thresholds = metadata.get("thresholds")
+
+    if not isinstance(thresholds, dict):
+        return normalized
+
+    metadata["thresholds"] = {
+        "low": {
+            "minimum": 0.0,
+            "maximum_exclusive": 0.61,
+        },
+        "compatible": {
+            "minimum": 0.61,
+            "maximum_exclusive": 0.82,
+        },
+        "very_high": {
+            "minimum": 0.82,
+            "maximum_inclusive": 1.0,
+        },
+    }
+
+    metadata["catalog_class_scheme"] = (
+        "low|compatible|very_high"
+    )
+    metadata["catalog_threshold_derivation"] = (
+        "Original compatible and high classes merged following "
+        "stratified visual validation."
+    )
+
+    return normalized
+
+
 def get_catalog_view(entity_id: Optional[str]):
     if entity_id:
         return ENTITY_CATALOG_VIEW
@@ -493,14 +601,18 @@ def areas_metadata(
         },
         "model": {
             key: json_safe(value)
-            for key, value in dict(model).items()
+            for key, value in normalize_model_metadata(
+                dict(model)
+            ).items()
         },
         "thresholds": [
             {
                 key: json_safe(value)
                 for key, value in row.items()
             }
-            for row in thresholds
+            for row in normalize_public_thresholds(
+                [dict(row) for row in thresholds]
+            )
         ],
         "data_policy": {
             "source_attribution": "Regione Calabria - Repertorio Cartografico regionale, dataset derivati e rielaborati per finalit? diagnostiche.",
