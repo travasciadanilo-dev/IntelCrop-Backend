@@ -5,7 +5,10 @@ from fastapi.testclient import TestClient
 
 from main import app
 from routers.areas import get_connection
-from scripts.process_analysis_jobs_v1 import run_once
+from scripts.process_analysis_jobs_v1 import (
+    build_relative_comparison,
+    run_once,
+)
 
 
 client = TestClient(app)
@@ -160,8 +163,23 @@ def test_worker_completes_queued_job():
                 ]
                 is True
             )
+            assert (
+                result["relative_comparison"]["status"]
+                == "insufficient_areas"
+            )
+            assert (
+                result["relative_comparison"][
+                    "comparable_area_count"
+                ]
+                == 1
+            )
+            assert (
+                result_area["relative_position"]
+                is None
+            )
         else:
             assert result["spectral_summary"] is None
+            assert result["relative_comparison"] is None
             assert (
                 result["areas"][0]["spectral_quality"]
                 is None
@@ -240,3 +258,102 @@ def test_worker_marks_unsupported_profile_as_error():
         assert data["error"]["error_id"]
     finally:
         delete_job(job_id)
+
+def test_relative_comparison_two_complete_areas():
+    areas = [
+        {
+            "area_id": "area-a",
+            "feature_matrix_version": (
+                "area_feature_matrix_regional_v1"
+            ),
+            "has_complete_spectral_features": True,
+            "ndvi_median": 0.40,
+            "evi_median": 0.20,
+            "ndmi_median": 0.10,
+            "bsi_median": -0.05,
+        },
+        {
+            "area_id": "area-b",
+            "feature_matrix_version": (
+                "area_feature_matrix_regional_v1"
+            ),
+            "has_complete_spectral_features": True,
+            "ndvi_median": 0.60,
+            "evi_median": 0.30,
+            "ndmi_median": 0.00,
+            "bsi_median": 0.05,
+        },
+    ]
+
+    comparison, positions = (
+        build_relative_comparison(areas)
+    )
+
+    assert comparison is not None
+    assert comparison["status"] == "available"
+    assert comparison["comparable_area_count"] == 2
+
+    assert (
+        positions["area-a"]["ndvi_median"][
+            "relative_position_0_1"
+        ]
+        == 0.0
+    )
+    assert (
+        positions["area-b"]["ndvi_median"][
+            "relative_position_0_1"
+        ]
+        == 1.0
+    )
+    assert (
+        positions["area-b"]["ndvi_median"][
+            "rank_desc"
+        ]
+        == 1
+    )
+
+    # BSI resta un confronto numerico, senza inversione
+    # o interpretazione automatica migliore/peggiore.
+    assert (
+        positions["area-b"]["bsi_median"][
+            "relative_position_0_1"
+        ]
+        == 1.0
+    )
+
+
+def test_relative_comparison_equal_values():
+    areas = [
+        {
+            "area_id": "area-a",
+            "feature_matrix_version": "matrix-v1",
+            "has_complete_spectral_features": True,
+            "ndvi_median": 0.50,
+        },
+        {
+            "area_id": "area-b",
+            "feature_matrix_version": "matrix-v1",
+            "has_complete_spectral_features": True,
+            "ndvi_median": 0.50,
+        },
+    ]
+
+    comparison, positions = (
+        build_relative_comparison(areas)
+    )
+
+    assert comparison is not None
+    assert comparison["status"] == "available"
+    assert (
+        positions["area-a"]["ndvi_median"][
+            "relative_position_0_1"
+        ]
+        == 0.5
+    )
+    assert (
+        positions["area-b"]["ndvi_median"][
+            "rank_desc"
+        ]
+        == 1
+    )
+

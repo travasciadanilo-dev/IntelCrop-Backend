@@ -297,6 +297,39 @@ class CatalogSpectralSummary(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
+class CatalogRelativeIndexPosition(BaseModel):
+    raw_value: float
+    rank_desc: int
+    compared_area_count: int
+    relative_position_0_1: float
+
+    model_config = ConfigDict(extra="allow")
+
+
+class CatalogRelativeIndexSummary(BaseModel):
+    compared_area_count: int
+    minimum: float
+    maximum: float
+    spread: float
+    interpretation: str
+
+    model_config = ConfigDict(extra="allow")
+
+
+class CatalogRelativeComparison(BaseModel):
+    status: str
+    comparison_scope: str
+    minimum_required_areas: int
+    comparable_area_count: int
+    position_definition: str
+    indices: dict[
+        str,
+        CatalogRelativeIndexSummary,
+    ]
+
+    model_config = ConfigDict(extra="allow")
+
+
 class CatalogScreeningArea(BaseModel):
     area_id: str
     area_ha: Optional[float] = None
@@ -307,6 +340,9 @@ class CatalogScreeningArea(BaseModel):
     spatial_validation_zone: Optional[str] = None
     spectral_quality: Optional[CatalogSpectralQuality] = None
     spectral_indices: Optional[CatalogSpectralIndices] = None
+    relative_position: Optional[
+        dict[str, CatalogRelativeIndexPosition]
+    ] = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -323,6 +359,9 @@ class CatalogScreeningResult(BaseModel):
     generated_at: str
     summary: CatalogScreeningSummary
     spectral_summary: Optional[CatalogSpectralSummary] = None
+    relative_comparison: Optional[
+        CatalogRelativeComparison
+    ] = None
     areas: list[CatalogScreeningArea]
     limitations: list[str]
 

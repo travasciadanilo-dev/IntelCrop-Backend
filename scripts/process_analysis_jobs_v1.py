@@ -230,6 +230,130 @@ def build_spectral_summary(
     }
 
 
+def build_relative_comparison(
+    areas: list[dict[str, Any]],
+) -> tuple[
+    dict[str, Any] | None,
+    dict[str, dict[str, Any]],
+]:
+    """
+    Confronta descrittivamente le aree selezionate nello stesso job.
+
+    I risultati indicano soltanto la posizione relativa dei valori
+    osservati. Non esprimono qualit?, salute o priorit? agronomica.
+    """
+    if not any(
+        area.get("feature_matrix_version")
+        for area in areas
+    ):
+        return None, {}
+
+    complete_areas = [
+        area
+        for area in areas
+        if (
+            area.get("has_complete_spectral_features")
+            is True
+            and area.get("area_id") is not None
+        )
+    ]
+
+    base_result = {
+        "comparison_scope": "selected_job_areas_only",
+        "minimum_required_areas": 2,
+        "comparable_area_count": len(complete_areas),
+        "position_definition": (
+            "0.0 indica il valore minimo e 1.0 il valore "
+            "massimo osservato tra le aree selezionate. "
+            "La posizione non rappresenta qualit? agronomica."
+        ),
+    }
+
+    if len(complete_areas) < 2:
+        return {
+            **base_result,
+            "status": "insufficient_areas",
+            "indices": {},
+        }, {}
+
+    index_fields = (
+        "ndvi_median",
+        "evi_median",
+        "ndmi_median",
+        "bsi_median",
+    )
+
+    comparison_indices: dict[str, dict[str, Any]] = {}
+    area_positions: dict[str, dict[str, Any]] = {
+        str(area["area_id"]): {}
+        for area in complete_areas
+    }
+
+    for field in index_fields:
+        values_by_area = {
+            str(area["area_id"]): value
+            for area in complete_areas
+            if (
+                value := safe_float(area.get(field))
+            ) is not None
+        }
+
+        if len(values_by_area) < 2:
+            continue
+
+        values = list(values_by_area.values())
+        minimum = min(values)
+        maximum = max(values)
+        spread = maximum - minimum
+        unique_desc = sorted(
+            set(values),
+            reverse=True,
+        )
+
+        comparison_indices[field] = {
+            "compared_area_count": len(values_by_area),
+            "minimum": minimum,
+            "maximum": maximum,
+            "spread": spread,
+            "interpretation": (
+                "Confronto numerico interno al job; valori "
+                "pi? alti o pi? bassi non sono classificati "
+                "automaticamente come migliori o peggiori."
+            ),
+        }
+
+        for area_id, value in values_by_area.items():
+            if spread == 0:
+                relative_position = 0.5
+            else:
+                relative_position = (
+                    value - minimum
+                ) / spread
+
+            area_positions[area_id][field] = {
+                "raw_value": value,
+                "rank_desc": (
+                    unique_desc.index(value) + 1
+                ),
+                "compared_area_count": len(
+                    values_by_area
+                ),
+                "relative_position_0_1": (
+                    relative_position
+                ),
+            }
+
+    return {
+        **base_result,
+        "status": (
+            "available"
+            if comparison_indices
+            else "insufficient_data"
+        ),
+        "indices": comparison_indices,
+    }, area_positions
+
+
 def build_catalog_screening_result(
     job: dict[str, Any],
 ) -> dict[str, Any]:
@@ -295,6 +419,10 @@ def build_catalog_screening_result(
             sum(reliability_scores) / len(reliability_scores)
         )
 
+    relative_comparison, relative_positions = (
+        build_relative_comparison(areas)
+    )
+
     result_areas = []
 
     for area in areas:
@@ -319,6 +447,8 @@ def build_catalog_screening_result(
         }
 
         if area.get("feature_matrix_version"):
+            area_id = str(area.get("area_id"))
+
             area_result["spectral_quality"] = {
                 "spectral_status": area.get(
                     "spectral_status"
@@ -346,6 +476,11 @@ def build_catalog_screening_result(
                 "ndmi_median": area.get("ndmi_median"),
                 "bsi_median": area.get("bsi_median"),
             }
+
+            if area_id in relative_positions:
+                area_result["relative_position"] = (
+                    relative_positions[area_id]
+                )
 
         result_areas.append(area_result)
 
@@ -375,6 +510,15 @@ def build_catalog_screening_result(
         **(
             {"spectral_summary": spectral_summary}
             if spectral_summary is not None
+            else {}
+        ),
+        **(
+            {
+                "relative_comparison": (
+                    relative_comparison
+                )
+            }
+            if relative_comparison is not None
             else {}
         ),
         "areas": result_areas,
