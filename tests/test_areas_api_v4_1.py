@@ -16,6 +16,7 @@ from main import app
 from routers.areas import (
     ACTIVE_CATALOG_STATUS,
     ACTIVE_CATALOG_VERSION,
+    ACTIVE_FEATURE_MATRIX_VERSION,
     ACTIVE_MODEL_VERSION,
     ALLOWED_RELIABILITY_CLASSES,
     AREA_CATALOG_VERSION,
@@ -33,6 +34,10 @@ def test_v4_1_configuration():
     assert ENTITY_CATALOG_VIEW == "area_catalog_v4_1_entity_scope"
     assert ACTIVE_CATALOG_VERSION == "area_catalog_v4_1_diagnostic"
     assert ACTIVE_CATALOG_STATUS == "validated_not_promoted"
+    assert (
+        ACTIVE_FEATURE_MATRIX_VERSION
+        == "area_feature_matrix_regional_v1"
+    )
     assert (
         ACTIVE_MODEL_VERSION
         == "regional_reliability_score_exp_v4_combined_ridge"
@@ -181,6 +186,10 @@ def test_v4_1_metadata_contract():
     assert (
         data["catalog"]["catalog_status"]
         == "validated_not_promoted"
+    )
+    assert (
+        data["catalog"]["feature_matrix_version"]
+        == "area_feature_matrix_regional_v1"
     )
     assert (
         data["model"]["model_version"]

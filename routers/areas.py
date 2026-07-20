@@ -34,6 +34,9 @@ CATALOG_CONFIGS = {
         "entity_view": "area_catalog_v4_1_entity_scope",
         "catalog_version": "area_catalog_v4_1_diagnostic",
         "catalog_status": "validated_not_promoted",
+        "feature_matrix_version": (
+            "area_feature_matrix_regional_v1"
+        ),
         "model_version": (
             "regional_reliability_score_exp_v4_combined_ridge"
         ),
@@ -83,6 +86,10 @@ ACTIVE_CATALOG_STATUS = ACTIVE_CATALOG_CONFIG[
 ACTIVE_MODEL_VERSION = ACTIVE_CATALOG_CONFIG[
     "model_version"
 ]
+
+ACTIVE_FEATURE_MATRIX_VERSION = (
+    ACTIVE_CATALOG_CONFIG.get("feature_matrix_version")
+)
 
 ALLOWED_RELIABILITY_CLASSES = set(
     ACTIVE_CATALOG_CONFIG[
@@ -591,6 +598,15 @@ def areas_metadata(
             "catalog_view": catalog_view,
             "catalog_version": ACTIVE_CATALOG_VERSION,
             "catalog_status": ACTIVE_CATALOG_STATUS,
+            **(
+                {
+                    "feature_matrix_version": (
+                        ACTIVE_FEATURE_MATRIX_VERSION
+                    )
+                }
+                if ACTIVE_FEATURE_MATRIX_VERSION
+                else {}
+            ),
             "scope": "entity" if entity_id else "regional",
             "entity": entity,
             "entity_territories": entity_territories,
