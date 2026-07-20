@@ -19,6 +19,7 @@ CATALOG_CONFIGS = {
     "v3": {
         "regional_view": "area_catalog_v1_diagnostic",
         "entity_view": "area_catalog_v1_entity_scope",
+        "job_entity_view": "area_catalog_v1_entity_scope",
         "catalog_version": "area_catalog_v1_diagnostic",
         "catalog_status": "diagnostic_not_final",
         "model_version": "regional_reliability_score_exp_v3",
@@ -32,6 +33,9 @@ CATALOG_CONFIGS = {
     "v4_1": {
         "regional_view": "area_catalog_v4_1_diagnostic",
         "entity_view": "area_catalog_v4_1_entity_scope",
+        "job_entity_view": (
+            "area_catalog_v4_1_operational_entity_scope"
+        ),
         "catalog_version": "area_catalog_v4_1_diagnostic",
         "catalog_status": "validated_not_promoted",
         "feature_matrix_version": (
@@ -73,6 +77,10 @@ REGIONAL_CATALOG_VIEW = ACTIVE_CATALOG_CONFIG[
 
 ENTITY_CATALOG_VIEW = ACTIVE_CATALOG_CONFIG[
     "entity_view"
+]
+
+JOB_ENTITY_CATALOG_VIEW = ACTIVE_CATALOG_CONFIG[
+    "job_entity_view"
 ]
 
 ACTIVE_CATALOG_VERSION = ACTIVE_CATALOG_CONFIG[

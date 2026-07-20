@@ -20,7 +20,7 @@ from routers.areas import (
     ACTIVE_CATALOG_VERSION,
     ACTIVE_FEATURE_MATRIX_VERSION,
     ACTIVE_MODEL_VERSION,
-    ENTITY_CATALOG_VIEW,
+    JOB_ENTITY_CATALOG_VIEW,
     get_connection,
     json_safe,
     validate_entity,
@@ -128,7 +128,7 @@ def fetch_entity_catalog_areas(
 
                 to_jsonb(area_row) - 'geom' AS area_snapshot
 
-            FROM {ENTITY_CATALOG_VIEW} AS area_row
+            FROM {JOB_ENTITY_CATALOG_VIEW} AS area_row
 
             WHERE entity_id = %s
 

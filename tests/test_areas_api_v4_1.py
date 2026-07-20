@@ -21,6 +21,7 @@ from routers.areas import (
     ALLOWED_RELIABILITY_CLASSES,
     AREA_CATALOG_VERSION,
     ENTITY_CATALOG_VIEW,
+    JOB_ENTITY_CATALOG_VIEW,
     REGIONAL_CATALOG_VIEW,
 )
 
@@ -32,6 +33,10 @@ def test_v4_1_configuration():
     assert AREA_CATALOG_VERSION == "v4_1"
     assert REGIONAL_CATALOG_VIEW == "area_catalog_v4_1_diagnostic"
     assert ENTITY_CATALOG_VIEW == "area_catalog_v4_1_entity_scope"
+    assert (
+        JOB_ENTITY_CATALOG_VIEW
+        == "area_catalog_v4_1_operational_entity_scope"
+    )
     assert ACTIVE_CATALOG_VERSION == "area_catalog_v4_1_diagnostic"
     assert ACTIVE_CATALOG_STATUS == "validated_not_promoted"
     assert (

@@ -199,6 +199,17 @@ def test_create_batch_job_contract():
                 area["feature_matrix_version"]
                 == "area_feature_matrix_regional_v1"
             )
+            assert area["feature_link_valid"] is True
+            assert "n_observations" in area
+            assert "ndvi_median" in area
+            assert "evi_median" in area
+            assert "ndmi_median" in area
+            assert "bsi_median" in area
+            assert "spectral_status" in area
+            assert (
+                area["has_complete_spectral_features"]
+                is True
+            )
 
     delete_test_job(data["job_id"])
 
