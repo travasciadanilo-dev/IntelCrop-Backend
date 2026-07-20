@@ -96,6 +96,9 @@ def test_worker_completes_queued_job():
                 "v4_combined_ridge"
             )
             expected_limitation_version = "v4.1"
+            expected_feature_matrix = (
+                "area_feature_matrix_regional_v1"
+            )
         else:
             expected_catalog = (
                 "area_catalog_v1_diagnostic"
@@ -104,6 +107,7 @@ def test_worker_completes_queued_job():
                 "regional_reliability_score_exp_v3"
             )
             expected_limitation_version = "v3"
+            expected_feature_matrix = None
 
         assert (
             result["catalog_version"]
@@ -112,6 +116,10 @@ def test_worker_completes_queued_job():
         assert (
             result["model_version"]
             == expected_model
+        )
+        assert (
+            result["feature_matrix_version"]
+            == expected_feature_matrix
         )
 
         limitations_text = " ".join(

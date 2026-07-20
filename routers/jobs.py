@@ -18,6 +18,7 @@ from psycopg2.extras import Json, RealDictCursor
 
 from routers.areas import (
     ACTIVE_CATALOG_VERSION,
+    ACTIVE_FEATURE_MATRIX_VERSION,
     ACTIVE_MODEL_VERSION,
     ENTITY_CATALOG_VIEW,
     get_connection,
@@ -163,17 +164,27 @@ def fetch_entity_catalog_areas(
 
 
 
-        catalog_areas.append(
+        normalized_snapshot = {
 
-            {
+            key: json_safe(value)
 
-                key: json_safe(value)
+            for key, value in snapshot.items()
 
-                for key, value in snapshot.items()
+        }
 
-            }
 
-        )
+
+        if ACTIVE_FEATURE_MATRIX_VERSION:
+
+            normalized_snapshot["feature_matrix_version"] = (
+
+                ACTIVE_FEATURE_MATRIX_VERSION
+
+            )
+
+
+
+        catalog_areas.append(normalized_snapshot)
 
 
 
@@ -233,7 +244,9 @@ def insert_job(
 
                 catalog_version,
 
-                model_version
+                model_version,
+
+                feature_matrix_version
 
             )
 
@@ -263,6 +276,8 @@ def insert_job(
 
                 %s,
 
+                %s,
+
                 %s
 
             );
@@ -282,6 +297,7 @@ def insert_job(
                 Json(catalog_areas),
                 ACTIVE_CATALOG_VERSION,
                 ACTIVE_MODEL_VERSION,
+                ACTIVE_FEATURE_MATRIX_VERSION,
 
             ),
 

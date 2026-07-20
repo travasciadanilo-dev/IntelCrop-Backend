@@ -22,6 +22,34 @@ def delete_test_job(job_id: str) -> None:
         conn.commit()
 
 
+def read_job_versions(job_id: str) -> dict:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    catalog_version,
+                    model_version,
+                    feature_matrix_version,
+                    area_snapshot
+                FROM analysis_jobs_v1
+                WHERE job_id = %s;
+                """,
+                (job_id,),
+            )
+
+            row = cur.fetchone()
+
+    assert row is not None
+
+    return {
+        "catalog_version": row[0],
+        "model_version": row[1],
+        "feature_matrix_version": row[2],
+        "area_snapshot": row[3],
+    }
+
+
 def get_catalog_area_ids(limit: int = 2) -> list[str]:
     response = client.get(
         "/areas",
@@ -146,6 +174,31 @@ def test_create_batch_job_contract():
 
     assert data["status"] == "queued"
     assert data["job_id"].startswith("job_")
+
+    job_versions = read_job_versions(data["job_id"])
+
+    assert job_versions["catalog_version"]
+    assert job_versions["model_version"]
+
+    area_snapshot = job_versions["area_snapshot"]
+
+    assert isinstance(area_snapshot, list)
+    assert len(area_snapshot) == len(area_ids)
+
+    if job_versions["feature_matrix_version"] is None:
+        for area in area_snapshot:
+            assert "feature_matrix_version" not in area
+    else:
+        assert (
+            job_versions["feature_matrix_version"]
+            == "area_feature_matrix_regional_v1"
+        )
+
+        for area in area_snapshot:
+            assert (
+                area["feature_matrix_version"]
+                == "area_feature_matrix_regional_v1"
+            )
 
     delete_test_job(data["job_id"])
 

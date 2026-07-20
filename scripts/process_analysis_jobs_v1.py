@@ -226,6 +226,9 @@ def build_catalog_screening_result(
         "worker_version": WORKER_VERSION,
         "catalog_version": job["catalog_version"],
         "model_version": job["model_version"],
+        "feature_matrix_version": job.get(
+            "feature_matrix_version"
+        ),
         "generated_at": utc_now_iso(),
         "summary": {
             "selected_area_count": len(area_ids),
