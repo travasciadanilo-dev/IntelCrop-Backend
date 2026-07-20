@@ -252,12 +252,63 @@ class AnalysisResultContract(BaseModel):
 # MODELLI PER JOB ASINCRONI (FASE 2)
 # ================================================================
 
+class CatalogScreeningSummary(BaseModel):
+    selected_area_count: int
+    snapshot_area_count: int
+    total_area_ha: float
+    priority_area_count: int
+    mean_reliability_score: Optional[float] = None
+    reliability_class_counts: dict[str, int]
+
+    model_config = ConfigDict(extra="allow")
+
+
+class CatalogScreeningArea(BaseModel):
+    area_id: str
+    area_ha: Optional[float] = None
+    reliability_score: Optional[float] = None
+    reliability_class: Optional[str] = None
+    priority_candidate: Optional[bool] = None
+    technical_subtype_id: Optional[str] = None
+    spatial_validation_zone: Optional[str] = None
+
+    model_config = ConfigDict(extra="allow")
+
+
+class CatalogScreeningResult(BaseModel):
+    result_type: Literal["catalog_screening_diagnostic_v1"]
+    status: Literal["completed"]
+    job_id: str
+    entity_id: str
+    analysis_profile: str
+    worker_version: str
+    catalog_version: str
+    model_version: str
+    generated_at: str
+    summary: CatalogScreeningSummary
+    areas: list[CatalogScreeningArea]
+    limitations: list[str]
+
+    model_config = ConfigDict(extra="allow")
+
+
 class JobError(BaseModel):
     code: str
     message: str
     error_id: Optional[str] = None
 
     model_config = ConfigDict(extra="allow")
+
+
+class BatchJobCreateRequest(BaseModel):
+    entity_id: str
+    area_ids: list[str]
+    analysis_profile: str = "catalog_screening_v1"
+
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
 
 
 class JobCreateResponse(BaseModel):
@@ -272,7 +323,7 @@ class JobStatusResponse(BaseModel):
     status: Literal["queued", "processing", "done", "error", "cancelled"]
     current_step: Optional[str] = None
     progress_pct: Optional[float] = None
-    result: Optional[AnalysisResultContract] = None
+    result: Optional[AnalysisResultContract | CatalogScreeningResult] = None
     error: Optional[JobError] = None
 
     model_config = ConfigDict(extra="allow")

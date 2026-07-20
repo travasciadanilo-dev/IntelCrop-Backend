@@ -7,3 +7,8 @@ numpy
 python-dotenv
 pytest
 psycopg2-binary
+shapely
+pyproj
+scikit-learn
+httpx2
+pandas==3.0.3

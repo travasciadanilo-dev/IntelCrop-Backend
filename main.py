@@ -71,6 +71,10 @@ from threading import Lock
 # Landcover matching
 from landcover_matching import match_field_to_subtype
 
+# Router per le aree di lavoro
+from routers.areas import router as areas_router
+from routers.jobs import router as jobs_router
+
 # F11: Carica variabili d'ambiente da .env
 load_dotenv()
 
@@ -105,6 +109,12 @@ app.add_middleware(
         "Authorization"
     ],
 )
+
+# ================================================================
+# REGISTRAZIONE ROUTER
+# ================================================================
+app.include_router(areas_router)
+app.include_router(jobs_router)
 
 # ================================================================
 # F8 + F12: CONFIGURAZIONE API

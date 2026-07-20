@@ -1,0 +1,283 @@
+﻿db\init\012_public_sector_catalog_foundation.sql:411: 'regional_reliability_score',
+db\init\012_public_sector_catalog_foundation.sql:516: NULL::numeric AS regional_reliability_score,
+db\init\012_public_sector_catalog_foundation.sql:517: NULL::text AS regional_reliability_class,
+db\init\012_public_sector_catalog_foundation.sql:569: c.regional_reliability_score,
+db\init\012_public_sector_catalog_foundation.sql:570: c.regional_reliability_class,
+db\init\013_area_feature_matrix.sql:10: -- Serve come base per calibrare un regional_reliability_score.
+db\init\014_regional_reliability_calibration_schema.sql:7: -- del regional_reliability_score.
+db\init\014_regional_reliability_calibration_schema.sql:18: model_name text NOT NULL DEFAULT 'regional_reliability_score',
+db\init\020_visual_review_sample_v2_schema.sql:9: -- Verranno usate per calibrare regional_reliability_score_v3.
+db\init\023_area_catalog_v1_diagnostic.sql:45: d.experimental_reliability_score_v3 AS reliability_score,
+db\init\023_area_catalog_v1_diagnostic.sql:46: d.experimental_reliability_class_v3 AS reliability_class,
+db\init\023_area_catalog_v1_diagnostic.sql:50: WHEN d.experimental_reliability_class_v3 = 'very_high' THEN 4
+db\init\023_area_catalog_v1_diagnostic.sql:51: WHEN d.experimental_reliability_class_v3 = 'high' THEN 3
+db\init\023_area_catalog_v1_diagnostic.sql:52: WHEN d.experimental_reliability_class_v3 = 'compatible' THEN 2
+db\init\023_area_catalog_v1_diagnostic.sql:53: WHEN d.experimental_reliability_class_v3 = 'low' THEN 1
+db\init\023_area_catalog_v1_diagnostic.sql:58: WHEN d.experimental_reliability_class_v3 IN ('very_high', 'high')
+db\init\023_area_catalog_v1_diagnostic.sql:64: WHEN d.experimental_reliability_class_v3 = 'very_high'
+db\init\023_area_catalog_v1_diagnostic.sql:66: WHEN d.experimental_reliability_class_v3 = 'high'
+db\init\023_area_catalog_v1_diagnostic.sql:68: WHEN d.experimental_reliability_class_v3 = 'compatible'
+db\init\023_area_catalog_v1_diagnostic.sql:76: d.reliability_score_created_at,
+db\init\023_area_catalog_v1_diagnostic.sql:91: FROM olive_candidate_pool_v2_reliability_v3_diagnostic_v1 d
+db\init\025_analysis_jobs_v1.sql:44: DEFAULT 'regional_reliability_score_exp_v3',
+db\init\026_regional_feature_matrix_visual_v2.sql:109: INNER JOIN olive_candidate_pool_v2_reliability_v3_diagnostic_v1 AS p
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:3: CREATE TABLE IF NOT EXISTS regional_reliability_scores_v4_diagnostic (
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:14: experimental_reliability_score_v4 double precision NOT NULL,
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:15: experimental_reliability_class_v4 text NOT NULL,
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:54: CONSTRAINT regional_reliability_scores_v4_diagnostic_pkey
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:57: CONSTRAINT regional_reliability_scores_v4_score_range_chk
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:59: experimental_reliability_score_v4 >= 0.0
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:60: AND experimental_reliability_score_v4 <= 1.0
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:63: CONSTRAINT regional_reliability_scores_v4_class_chk
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:65: experimental_reliability_class_v4 IN (
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:67: 'compatible',
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:69: 'very_high'
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:73: CONSTRAINT regional_reliability_scores_v4_large_flag_chk
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:76: CONSTRAINT regional_reliability_scores_v4_small_flag_chk
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:79: CONSTRAINT regional_reliability_scores_v4_complex_flag_chk
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:82: CONSTRAINT regional_reliability_scores_v4_spectral_flag_chk
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:93: idx_regional_reliability_scores_v4_model
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:94: ON regional_reliability_scores_v4_diagnostic (
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:99: idx_regional_reliability_scores_v4_class
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:100: ON regional_reliability_scores_v4_diagnostic (
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:101: experimental_reliability_class_v4
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:105: idx_regional_reliability_scores_v4_score
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:106: ON regional_reliability_scores_v4_diagnostic (
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:107: experimental_reliability_score_v4 DESC
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:111: idx_regional_reliability_scores_v4_zone_class
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:112: ON regional_reliability_scores_v4_diagnostic (
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:114: experimental_reliability_class_v4
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:118: idx_regional_reliability_scores_v4_source_geometry
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:119: ON regional_reliability_scores_v4_diagnostic (
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:124: idx_regional_reliability_scores_v4_spectral_flag
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:125: ON regional_reliability_scores_v4_diagnostic (
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:130: COMMENT ON TABLE regional_reliability_scores_v4_diagnostic IS
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:134: regional_reliability_scores_v4_diagnostic.experimental_reliability_score_v4 IS
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:138: regional_reliability_scores_v4_diagnostic.experimental_reliability_class_v4 IS
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:139: 'Classe diagnostica derivata dalle soglie v4: low < 0.61, compatible 0.61-0.77, high 0.77-0.82, very_high >= 0.82.';
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:142: regional_reliability_scores_v4_diagnostic.feature_warning IS
+db\init\032_regional_reliability_scores_v4_diagnostic.sql:146: regional_reliability_scores_v4_diagnostic.artifact_sha256 IS
+routers\areas.py:21: ALLOWED_RELIABILITY_CLASSES = {
+routers\areas.py:23: "compatible",
+routers\areas.py:25: "very_high",
+routers\areas.py:103: reliability_class: Optional[str],
+routers\areas.py:117: if reliability_class:
+routers\areas.py:118: if reliability_class not in ALLOWED_RELIABILITY_CLASSES:
+routers\areas.py:121: detail=f"Classe affidabilità non valida: {reliability_class}",
+routers\areas.py:124: where.append("reliability_class = %s")
+routers\areas.py:125: params.append(reliability_class)
+routers\areas.py:244: reliability_score,
+routers\areas.py:245: reliability_class,
+routers\areas.py:267: ORDER BY reliability_rank DESC, reliability_score DESC, area_id
+routers\areas.py:322: reliability_class=None,
+routers\areas.py:342: WHERE reliability_class = 'very_high'
+routers\areas.py:343: ) AS n_very_high,
+routers\areas.py:345: WHERE reliability_class = 'high'
+routers\areas.py:348: WHERE reliability_class = 'compatible'
+routers\areas.py:349: ) AS n_compatible,
+routers\areas.py:351: WHERE reliability_class = 'low'
+routers\areas.py:353: MIN(reliability_score) AS min_reliability_score,
+routers\areas.py:354: MAX(reliability_score) AS max_reliability_score,
+routers\areas.py:355: AVG(reliability_score) AS mean_reliability_score
+routers\areas.py:368: WHERE model_version = 'regional_reliability_score_exp_v3';
+routers\areas.py:384: WHERE model_version = 'regional_reliability_score_exp_v3';
+routers\areas.py:452: reliability_class: Optional[str] = Query(
+routers\areas.py:454: description="Filtro classe: low, compatible, high, very_high.",
+routers\areas.py:462: description="Se true esporta solo high e very_high diagnostiche.",
+routers\areas.py:514: reliability_class=reliability_class,
+routers\areas.py:555: "reliability_class": reliability_class,
+routers\areas.py:577: reliability_class=None,
+routers\areas.py:592: reliability_class,
+routers\areas.py:594: ROUND(AVG(reliability_score)::numeric, 4) AS mean_score,
+routers\areas.py:595: ROUND(MIN(reliability_score)::numeric, 4) AS min_score,
+routers\areas.py:596: ROUND(MAX(reliability_score)::numeric, 4) AS max_score
+routers\areas.py:599: GROUP BY reliability_class
+routers\areas.py:601: CASE reliability_class
+routers\areas.py:603: WHEN 'compatible' THEN 2
+routers\areas.py:605: WHEN 'very_high' THEN 4
+routers\areas.py:618: reliability_class,
+routers\areas.py:622: GROUP BY spatial_validation_zone, reliability_class
+routers\areas.py:623: ORDER BY spatial_validation_zone, reliability_class;
+routers\areas.py:680: reliability_class: Optional[str] = Query(
+routers\areas.py:682: description="Filtro classe: low, compatible, high, very_high.",
+routers\areas.py:690: description="Se true restituisce solo high e very_high diagnostiche.",
+routers\areas.py:749: reliability_class=reliability_class,
+routers\jobs.py:130: 'regional_reliability_score_exp_v3'
+scripts\apply_regional_reliability_score_v3_diagnostic.py:14: MODEL_VERSION = "regional_reliability_score_exp_v3"
+scripts\apply_regional_reliability_score_v3_diagnostic.py:16: SCORE_TABLE = "regional_reliability_scores_v3_diagnostic"
+scripts\apply_regional_reliability_score_v3_diagnostic.py:17: SCORE_VIEW = "olive_candidate_pool_v2_reliability_v3_diagnostic_v1"
+scripts\apply_regional_reliability_score_v3_diagnostic.py:20: VIEW_VERSION = "olive_candidate_pool_v2_reliability_v3_diagnostic_v1"
+scripts\apply_regional_reliability_score_v3_diagnostic.py:25: "compatible": "Compatibile diagnostico",
+scripts\apply_regional_reliability_score_v3_diagnostic.py:27: "very_high": "Affidabilità molto alta diagnostica",
+scripts\apply_regional_reliability_score_v3_diagnostic.py:88: if class_label == "very_high":
+scripts\apply_regional_reliability_score_v3_diagnostic.py:99: return "compatible"
+scripts\apply_regional_reliability_score_v3_diagnostic.py:104: return "very_high"
+scripts\apply_regional_reliability_score_v3_diagnostic.py:293: experimental_reliability_score_v3 double precision NOT NULL,
+scripts\apply_regional_reliability_score_v3_diagnostic.py:294: experimental_reliability_class_v3 text NOT NULL,
+scripts\apply_regional_reliability_score_v3_diagnostic.py:321: s.experimental_reliability_score_v3,
+scripts\apply_regional_reliability_score_v3_diagnostic.py:322: s.experimental_reliability_class_v3,
+scripts\apply_regional_reliability_score_v3_diagnostic.py:328: s.created_at AS reliability_score_created_at
+scripts\apply_regional_reliability_score_v3_diagnostic.py:365: experimental_reliability_score_v3,
+scripts\apply_regional_reliability_score_v3_diagnostic.py:366: experimental_reliability_class_v3,
+scripts\apply_regional_reliability_score_v3_diagnostic.py:385: experimental_reliability_class_v3 AS reliability_class,
+scripts\apply_regional_reliability_score_v3_diagnostic.py:387: ROUND(AVG(experimental_reliability_score_v3)::numeric, 4) AS mean_score,
+scripts\apply_regional_reliability_score_v3_diagnostic.py:388: ROUND(MIN(experimental_reliability_score_v3)::numeric, 4) AS min_score,
+scripts\apply_regional_reliability_score_v3_diagnostic.py:389: ROUND(MAX(experimental_reliability_score_v3)::numeric, 4) AS max_score
+scripts\apply_regional_reliability_score_v3_diagnostic.py:392: GROUP BY experimental_reliability_class_v3
+scripts\apply_regional_reliability_score_v3_diagnostic.py:394: CASE experimental_reliability_class_v3
+scripts\apply_regional_reliability_score_v3_diagnostic.py:396: WHEN 'compatible' THEN 2
+scripts\apply_regional_reliability_score_v3_diagnostic.py:398: WHEN 'very_high' THEN 4
+scripts\apply_regional_reliability_score_v3_diagnostic.py:408: experimental_reliability_class_v3 AS reliability_class,
+scripts\apply_regional_reliability_score_v3_diagnostic.py:411: GROUP BY spatial_validation_zone, experimental_reliability_class_v3
+scripts\apply_regional_reliability_score_v3_diagnostic.py:412: ORDER BY spatial_validation_zone, reliability_class;
+scripts\apply_regional_reliability_score_v3_diagnostic.py:420: experimental_reliability_class_v3 AS reliability_class,
+scripts\apply_regional_reliability_score_v3_diagnostic.py:423: GROUP BY candidate_origin, experimental_reliability_class_v3
+scripts\apply_regional_reliability_score_v3_diagnostic.py:424: ORDER BY candidate_origin, reliability_class;
+scripts\apply_regional_reliability_score_v3_diagnostic.py:451: f"{row['reliability_class']}: "
+scripts\apply_regional_reliability_score_v3_diagnostic.py:463: f"{row['reliability_class']}: {row['n']}"
+scripts\apply_regional_reliability_score_v3_diagnostic.py:471: f"{row['reliability_class']}: {row['n']}"
+scripts\apply_regional_reliability_score_v4_diagnostic.py:18: MODEL_VERSION = "regional_reliability_score_exp_v4_combined_ridge"
+scripts\apply_regional_reliability_score_v4_diagnostic.py:113: INSERT INTO regional_reliability_scores_v4_diagnostic (
+scripts\apply_regional_reliability_score_v4_diagnostic.py:124: experimental_reliability_score_v4,
+scripts\apply_regional_reliability_score_v4_diagnostic.py:125: experimental_reliability_class_v4,
+scripts\apply_regional_reliability_score_v4_diagnostic.py:181: experimental_reliability_score_v4 =
+scripts\apply_regional_reliability_score_v4_diagnostic.py:182: EXCLUDED.experimental_reliability_score_v4,
+scripts\apply_regional_reliability_score_v4_diagnostic.py:183: experimental_reliability_class_v4 =
+scripts\apply_regional_reliability_score_v4_diagnostic.py:184: EXCLUDED.experimental_reliability_class_v4,
+scripts\apply_regional_reliability_score_v4_diagnostic.py:454: "compatible",
+scripts\apply_regional_reliability_score_v4_diagnostic.py:465: "very_high",
+scripts\apply_regional_reliability_score_v4_diagnostic.py:530: reliability_class, reliability_label = (
+scripts\apply_regional_reliability_score_v4_diagnostic.py:558: reliability_class,
+scripts\apply_regional_reliability_score_v4_diagnostic.py:641: experimental_reliability_class_v4,
+scripts\apply_regional_reliability_score_v4_diagnostic.py:645: experimental_reliability_score_v4
+scripts\apply_regional_reliability_score_v4_diagnostic.py:651: experimental_reliability_score_v4
+scripts\apply_regional_reliability_score_v4_diagnostic.py:657: experimental_reliability_score_v4
+scripts\apply_regional_reliability_score_v4_diagnostic.py:661: FROM regional_reliability_scores_v4_diagnostic
+scripts\apply_regional_reliability_score_v4_diagnostic.py:663: GROUP BY experimental_reliability_class_v4
+scripts\apply_regional_reliability_score_v4_diagnostic.py:665: CASE experimental_reliability_class_v4
+scripts\apply_regional_reliability_score_v4_diagnostic.py:667: WHEN 'compatible' THEN 2
+scripts\apply_regional_reliability_score_v4_diagnostic.py:669: WHEN 'very_high' THEN 4
+scripts\apply_regional_reliability_score_v4_diagnostic.py:686: reliability_class,
+scripts\apply_regional_reliability_score_v4_diagnostic.py:693: f"{reliability_class:12s} "
+scripts\calibrate_regional_reliability_score.py:55: MODEL_NAME = "regional_reliability_score"
+scripts\calibrate_regional_reliability_score.py:436: "class_code": "compatible",
+scripts\calibrate_regional_reliability_score.py:458: "class_code": "very_high",
+scripts\calibrate_regional_reliability_score.py:1051: description="Calibra regional_reliability_score sperimentale."
+scripts\calibrate_regional_reliability_score.py:1078: model_version = f"regional_reliability_score_exp_{ts}"
+scripts\calibrate_regional_reliability_score_v3.py:28: MODEL_VERSION = "regional_reliability_score_exp_v3"
+scripts\calibrate_regional_reliability_score_v3.py:76: "class_label": "compatible",
+scripts\calibrate_regional_reliability_score_v3.py:88: "class_label": "very_high",
+scripts\calibrate_regional_reliability_score_v3.py:759: "compatible": "Compatibile",
+scripts\calibrate_regional_reliability_score_v3.py:761: "very_high": "Affidabilit? molto alta",
+scripts\calibrate_regional_reliability_score_v3.py:780: "reliability_class": class_code,
+scripts\check_area_feature_matrix_readiness.py:221: "del regional_reliability_score."
+scripts\check_regional_reliability_v4_thresholds_by_zone.py:23: "very_high": 0.82,
+scripts\check_regional_reliability_v4_thresholds_lozo.py:23: "very_high": 0.82,
+scripts\diagnose_regional_reliability_v4_feature_shift.py:14: "regional_reliability_score_exp_v4_combined_ridge"
+scripts\diagnose_regional_reliability_v4_feature_shift.py:138: return "very_high"
+scripts\diagnose_regional_reliability_v4_feature_shift.py:148: experimental_reliability_score_v4,
+scripts\diagnose_regional_reliability_v4_feature_shift.py:149: experimental_reliability_class_v4,
+scripts\diagnose_regional_reliability_v4_feature_shift.py:151: FROM regional_reliability_scores_v4_diagnostic
+scripts\diagnose_regional_reliability_v4_feature_shift.py:161: s.experimental_reliability_score_v4,
+scripts\diagnose_regional_reliability_v4_feature_shift.py:162: s.experimental_reliability_class_v4,
+scripts\diagnose_regional_reliability_v4_feature_shift.py:165: JOIN regional_reliability_scores_v4_diagnostic s
+scripts\diagnose_regional_reliability_v4_logit_contributions.py:17: "regional_reliability_score_exp_v4_combined_ridge"
+scripts\diagnose_regional_reliability_v4_logit_contributions.py:284: "very_high_percent": float(
+scripts\diagnose_regional_reliability_v4_logit_contributions.py:288: == "very_high"
+scripts\diagnose_regional_reliability_v4_logit_contributions.py:307: s.experimental_reliability_score_v4,
+scripts\diagnose_regional_reliability_v4_logit_contributions.py:308: s.experimental_reliability_class_v4,
+scripts\diagnose_regional_reliability_v4_logit_contributions.py:310: FROM regional_reliability_scores_v4_diagnostic s
+scripts\diagnose_regional_reliability_v4_logit_contributions.py:319: s.experimental_reliability_score_v4,
+scripts\diagnose_regional_reliability_v4_logit_contributions.py:320: s.experimental_reliability_class_v4,
+scripts\diagnose_regional_reliability_v4_logit_contributions.py:324: JOIN regional_reliability_scores_v4_diagnostic s
+scripts\diagnose_regional_reliability_v4_logit_contributions.py:433: "experimental_reliability_score_v4"
+scripts\diagnose_regional_reliability_v4_logit_contributions.py:474: "experimental_reliability_score_v4"
+scripts\diagnose_regional_reliability_v4_logit_contributions.py:477: "experimental_reliability_class_v4"
+scripts\diagnose_regional_reliability_v4_logit_contributions.py:579: "experimental_reliability_score_v4"
+scripts\diagnose_v4_prevalence_sensitivity.py:14: "regional_reliability_score_exp_v4_combined_ridge"
+scripts\diagnose_v4_prevalence_sensitivity.py:44: def reliability_class(score: float) -> str:
+scripts\diagnose_v4_prevalence_sensitivity.py:49: return "compatible"
+scripts\diagnose_v4_prevalence_sensitivity.py:54: return "very_high"
+scripts\diagnose_v4_prevalence_sensitivity.py:100: experimental_reliability_score_v4
+scripts\diagnose_v4_prevalence_sensitivity.py:102: FROM regional_reliability_scores_v4_diagnostic
+scripts\diagnose_v4_prevalence_sensitivity.py:138: ].apply(reliability_class)
+scripts\diagnose_v4_prevalence_sensitivity.py:180: "compatible_n": int(
+scripts\diagnose_v4_prevalence_sensitivity.py:182: "compatible",
+scripts\diagnose_v4_prevalence_sensitivity.py:189: "very_high_n": int(
+scripts\diagnose_v4_prevalence_sensitivity.py:191: "very_high",
+scripts\diagnose_v4_prevalence_sensitivity.py:195: "very_high_percent": (
+scripts\diagnose_v4_prevalence_sensitivity.py:198: "very_high",
+scripts\diagnose_v4_prevalence_sensitivity.py:228: f"very_high={row.very_high_percent:6.2f}%"
+scripts\export_area_catalog_v1_diagnostic_geojson.py:43: "reliability_score",
+scripts\export_area_catalog_v1_diagnostic_geojson.py:44: "reliability_class",
+scripts\export_area_catalog_v1_diagnostic_geojson.py:86: ORDER BY reliability_rank DESC, reliability_score DESC, area_id;
+scripts\export_area_catalog_v1_diagnostic_geojson.py:142: help="Export all catalog rows, not only high/very_high diagnostic priority candidates.",
+scripts\export_reliability_v3_review_batches.py:13: VIEW_NAME = "olive_candidate_pool_v2_reliability_v3_diagnostic_v1"
+scripts\export_reliability_v3_review_batches.py:18: ("very_high_top", "very_high", 40),
+scripts\export_reliability_v3_review_batches.py:20: ("compatible_top", "compatible", 40),
+scripts\export_reliability_v3_review_batches.py:21: ("compatible_borderline", "compatible", 40),
+scripts\export_reliability_v3_review_batches.py:31: "experimental_reliability_score_v3",
+scripts\export_reliability_v3_review_batches.py:32: "experimental_reliability_class_v3",
+scripts\export_reliability_v3_review_batches.py:83: if batch_name in {"very_high_top", "high_top", "compatible_top"}:
+scripts\export_reliability_v3_review_batches.py:84: return "experimental_reliability_score_v3 DESC"
+scripts\export_reliability_v3_review_batches.py:86: if batch_name == "compatible_borderline":
+scripts\export_reliability_v3_review_batches.py:87: return "ABS(experimental_reliability_score_v3 - 0.7000) ASC"
+scripts\export_reliability_v3_review_batches.py:90: return "ABS(experimental_reliability_score_v3 - 0.5000) ASC"
+scripts\export_reliability_v3_review_batches.py:93: return "experimental_reliability_score_v3 ASC"
+scripts\export_reliability_v3_review_batches.py:95: return "experimental_reliability_score_v3 DESC"
+scripts\export_reliability_v3_review_batches.py:98: def fetch_batch(conn, batch_name, reliability_class, limit_n, selected_columns, include_geom):
+scripts\export_reliability_v3_review_batches.py:104: params = [batch_name, reliability_class, limit_n]
+scripts\export_reliability_v3_review_batches.py:119: WHERE experimental_reliability_class_v3 = %s
+scripts\export_reliability_v3_review_batches.py:148: for batch_name, reliability_class, limit_n in BATCH_RULES:
+scripts\export_reliability_v3_review_batches.py:152: reliability_class=reliability_class,
+scripts\export_reliability_v3_review_batches_geojson.py:51: "experimental_reliability_score_v3",
+scripts\process_analysis_jobs_v1.py:160: reliability_scores = [
+scripts\process_analysis_jobs_v1.py:161: float(area["reliability_score"])
+scripts\process_analysis_jobs_v1.py:163: if area.get("reliability_score") is not None
+scripts\process_analysis_jobs_v1.py:181: area.get("reliability_class") or "unknown"
+scripts\process_analysis_jobs_v1.py:188: mean_reliability_score = None
+scripts\process_analysis_jobs_v1.py:190: if reliability_scores:
+scripts\process_analysis_jobs_v1.py:191: mean_reliability_score = (
+scripts\process_analysis_jobs_v1.py:192: sum(reliability_scores) / len(reliability_scores)
+scripts\process_analysis_jobs_v1.py:202: "reliability_score": area.get(
+scripts\process_analysis_jobs_v1.py:203: "reliability_score"
+scripts\process_analysis_jobs_v1.py:205: "reliability_class": area.get(
+scripts\process_analysis_jobs_v1.py:206: "reliability_class"
+scripts\process_analysis_jobs_v1.py:235: "mean_reliability_score": mean_reliability_score,
+scripts\process_analysis_jobs_v1.py:236: "reliability_class_counts": class_counts,
+scripts\register_regional_reliability_v4.py:23: "regional_reliability_score_exp_v4_combined_ridge"
+scripts\register_regional_reliability_v4.py:66: "class_code": "compatible",
+scripts\register_regional_reliability_v4.py:88: "class_code": "very_high",
+scripts\register_regional_reliability_v4.py:419: "model_name": "regional_reliability_score",
+scripts\train_regional_reliability_v4_final.py:32: "regional_reliability_score_exp_v4_combined_ridge"
+scripts\train_regional_reliability_v4_final.py:48: "very_high": 0.82,
+scripts\train_regional_reliability_v4_final.py:609: "compatible": {
+scripts\train_regional_reliability_v4_final.py:620: THRESHOLDS["very_high"]
+scripts\train_regional_reliability_v4_final.py:623: "very_high": {
+scripts\train_regional_reliability_v4_final.py:625: THRESHOLDS["very_high"]
+scripts\verify_regional_reliability_v4_artifact.py:23: "regional_reliability_score_exp_v4_combined_ridge"
+scripts\verify_regional_reliability_v4_artifact.py:191: return "very_high"
+scripts\verify_regional_reliability_v4_artifact.py:197: return "compatible"
+scripts\verify_regional_reliability_v4_artifact.py:280: output["reliability_class"] = [
+scripts\verify_regional_reliability_v4_artifact.py:291: output["reliability_class"]
+scripts\verify_regional_reliability_v4_artifact.py:296: "compatible",
+scripts\verify_regional_reliability_v4_artifact.py:298: "very_high",
+tests\test_areas_api.py:23: row["reliability_class"]: row["n"]
+tests\test_areas_api.py:28: assert classes["compatible"] == 10789
+tests\test_areas_api.py:30: assert classes["very_high"] == 1042
+tests\test_areas_api.py:49: assert item["reliability_class"] in {"high", "very_high"}
+tests\test_areas_api.py:50: assert item["reliability_model_version"] == "regional_reliability_score_exp_v3"
+tests\test_areas_api.py:56: def test_areas_very_high_contract():
+tests\test_areas_api.py:57: response = client.get("/areas?reliability_class=very_high&limit=5")
+tests\test_areas_api.py:67: assert item["reliability_class"] == "very_high"
+tests\test_areas_api.py:93: assert feature["properties"]["reliability_class"] in {"high", "very_high"}
+tests\test_areas_api.py:96: def test_areas_invalid_reliability_class():
+tests\test_areas_api.py:97: response = client.get("/areas?reliability_class=wrong_class")
+tests\test_areas_api.py:143: assert item["reliability_class"] in {"high", "very_high"}
+tests\test_areas_api.py:178: "regional_reliability_score_exp_v3"
+tests\test_areas_api.py:183: assert "reliability_class" in data["area"]
+tests\test_areas_api.py:184: assert "reliability_score" in data["area"]
+schemas.py:260: mean_reliability_score: Optional[float] = None
+schemas.py:261: reliability_class_counts: dict[str, int]
+schemas.py:269: reliability_score: Optional[float] = None
+schemas.py:270: reliability_class: Optional[str] = None
