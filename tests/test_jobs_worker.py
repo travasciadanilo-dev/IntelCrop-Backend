@@ -1,4 +1,5 @@
-﻿from uuid import uuid4
+import os
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
@@ -80,6 +81,51 @@ def test_worker_completes_queued_job():
         assert result["job_id"] == job_id
         assert result["summary"]["selected_area_count"] == 1
         assert len(result["areas"]) == 1
+
+        catalog_version = os.getenv(
+            "AREA_CATALOG_VERSION",
+            "v3",
+        ).strip().lower()
+
+        if catalog_version == "v4_1":
+            expected_catalog = (
+                "area_catalog_v4_1_diagnostic"
+            )
+            expected_model = (
+                "regional_reliability_score_exp_"
+                "v4_combined_ridge"
+            )
+            expected_limitation_version = "v4.1"
+        else:
+            expected_catalog = (
+                "area_catalog_v1_diagnostic"
+            )
+            expected_model = (
+                "regional_reliability_score_exp_v3"
+            )
+            expected_limitation_version = "v3"
+
+        assert (
+            result["catalog_version"]
+            == expected_catalog
+        )
+        assert (
+            result["model_version"]
+            == expected_model
+        )
+
+        limitations_text = " ".join(
+            result["limitations"]
+        )
+
+        assert (
+            f"affidabilit\u00e0 {expected_limitation_version}"
+            in limitations_text
+        )
+        assert (
+            "\u00e8 sperimentale"
+            in limitations_text
+        )
     finally:
         delete_job(job_id)
 
