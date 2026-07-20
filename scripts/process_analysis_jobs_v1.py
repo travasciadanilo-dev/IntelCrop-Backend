@@ -127,6 +127,109 @@ def update_job_progress(
         conn.commit()
 
 
+def safe_float(value: Any) -> float | None:
+    if value is None:
+        return None
+
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def mean_or_none(values: list[float]) -> float | None:
+    if not values:
+        return None
+
+    return sum(values) / len(values)
+
+
+def build_spectral_summary(
+    areas: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    if not any(
+        area.get("feature_matrix_version")
+        for area in areas
+    ):
+        return None
+
+    index_fields = (
+        "ndvi_median",
+        "evi_median",
+        "ndmi_median",
+        "bsi_median",
+    )
+
+    index_means: dict[str, float | None] = {}
+
+    for field in index_fields:
+        values = [
+            value
+            for area in areas
+            if (
+                value := safe_float(area.get(field))
+            ) is not None
+        ]
+
+        index_means[field] = mean_or_none(values)
+
+    observation_values = [
+        value
+        for area in areas
+        if (
+            value := safe_float(
+                area.get("n_observations")
+            )
+        ) is not None
+    ]
+
+    usable_count = sum(
+        1
+        for area in areas
+        if area.get("usable_for_baseline_spectral") is True
+    )
+
+    complete_count = sum(
+        1
+        for area in areas
+        if area.get(
+            "has_complete_spectral_features"
+        ) is True
+    )
+
+    spectral_status_counts: dict[str, int] = {}
+
+    for area in areas:
+        status = str(
+            area.get("spectral_status") or "unknown"
+        )
+
+        spectral_status_counts[status] = (
+            spectral_status_counts.get(status, 0) + 1
+        )
+
+    return {
+        "source": "regional_snapshot_features",
+        "selected_area_count": len(areas),
+        "complete_feature_count": complete_count,
+        "usable_baseline_count": usable_count,
+        "not_usable_baseline_count": (
+            len(areas) - usable_count
+        ),
+        "mean_observations": mean_or_none(
+            observation_values
+        ),
+        "mean_indices": index_means,
+        "spectral_status_counts": spectral_status_counts,
+        "interpretation_scope": (
+            "Descrizione delle feature spettrali regionali "
+            "precalcolate; non rappresenta una diagnosi "
+            "agronomica assoluta o un confronto temporale "
+            "del singolo appezzamento."
+        ),
+    }
+
+
 def build_catalog_screening_result(
     job: dict[str, Any],
 ) -> dict[str, Any]:
@@ -195,27 +298,58 @@ def build_catalog_screening_result(
     result_areas = []
 
     for area in areas:
-        result_areas.append(
-            {
-                "area_id": area.get("area_id"),
-                "area_ha": area.get("area_ha"),
-                "reliability_score": area.get(
-                    "reliability_score"
+        area_result = {
+            "area_id": area.get("area_id"),
+            "area_ha": area.get("area_ha"),
+            "reliability_score": area.get(
+                "reliability_score"
+            ),
+            "reliability_class": area.get(
+                "reliability_class"
+            ),
+            "priority_candidate": area.get(
+                "catalog_priority_candidate"
+            ),
+            "technical_subtype_id": area.get(
+                "technical_subtype_id"
+            ),
+            "spatial_validation_zone": area.get(
+                "spatial_validation_zone"
+            ),
+        }
+
+        if area.get("feature_matrix_version"):
+            area_result["spectral_quality"] = {
+                "spectral_status": area.get(
+                    "spectral_status"
                 ),
-                "reliability_class": area.get(
-                    "reliability_class"
+                "spectral_flag": area.get(
+                    "spectral_flag"
                 ),
-                "priority_candidate": area.get(
-                    "catalog_priority_candidate"
+                "n_observations": area.get(
+                    "n_observations"
                 ),
-                "technical_subtype_id": area.get(
-                    "technical_subtype_id"
+                "usable_for_baseline": area.get(
+                    "usable_for_baseline_spectral"
                 ),
-                "spatial_validation_zone": area.get(
-                    "spatial_validation_zone"
+                "complete_features": area.get(
+                    "has_complete_spectral_features"
+                ),
+                "exclusion_reason": area.get(
+                    "exclusion_reason"
                 ),
             }
-        )
+
+            area_result["spectral_indices"] = {
+                "ndvi_median": area.get("ndvi_median"),
+                "evi_median": area.get("evi_median"),
+                "ndmi_median": area.get("ndmi_median"),
+                "bsi_median": area.get("bsi_median"),
+            }
+
+        result_areas.append(area_result)
+
+    spectral_summary = build_spectral_summary(areas)
 
     return {
         "result_type": "catalog_screening_diagnostic_v1",
@@ -238,6 +372,11 @@ def build_catalog_screening_result(
             "mean_reliability_score": mean_reliability_score,
             "reliability_class_counts": class_counts,
         },
+        **(
+            {"spectral_summary": spectral_summary}
+            if spectral_summary is not None
+            else {}
+        ),
         "areas": result_areas,
         "limitations": [
             (

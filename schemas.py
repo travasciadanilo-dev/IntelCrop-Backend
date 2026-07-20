@@ -263,6 +263,40 @@ class CatalogScreeningSummary(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
+class CatalogSpectralQuality(BaseModel):
+    spectral_status: Optional[str] = None
+    spectral_flag: Optional[str] = None
+    n_observations: Optional[int] = None
+    usable_for_baseline: Optional[bool] = None
+    complete_features: Optional[bool] = None
+    exclusion_reason: Optional[str] = None
+
+    model_config = ConfigDict(extra="allow")
+
+
+class CatalogSpectralIndices(BaseModel):
+    ndvi_median: Optional[float] = None
+    evi_median: Optional[float] = None
+    ndmi_median: Optional[float] = None
+    bsi_median: Optional[float] = None
+
+    model_config = ConfigDict(extra="allow")
+
+
+class CatalogSpectralSummary(BaseModel):
+    source: str
+    selected_area_count: int
+    complete_feature_count: int
+    usable_baseline_count: int
+    not_usable_baseline_count: int
+    mean_observations: Optional[float] = None
+    mean_indices: dict[str, Optional[float]]
+    spectral_status_counts: dict[str, int]
+    interpretation_scope: str
+
+    model_config = ConfigDict(extra="allow")
+
+
 class CatalogScreeningArea(BaseModel):
     area_id: str
     area_ha: Optional[float] = None
@@ -271,6 +305,8 @@ class CatalogScreeningArea(BaseModel):
     priority_candidate: Optional[bool] = None
     technical_subtype_id: Optional[str] = None
     spatial_validation_zone: Optional[str] = None
+    spectral_quality: Optional[CatalogSpectralQuality] = None
+    spectral_indices: Optional[CatalogSpectralIndices] = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -286,6 +322,7 @@ class CatalogScreeningResult(BaseModel):
     model_version: str
     generated_at: str
     summary: CatalogScreeningSummary
+    spectral_summary: Optional[CatalogSpectralSummary] = None
     areas: list[CatalogScreeningArea]
     limitations: list[str]
 

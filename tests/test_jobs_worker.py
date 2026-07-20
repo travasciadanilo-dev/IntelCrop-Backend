@@ -122,6 +122,55 @@ def test_worker_completes_queued_job():
             == expected_feature_matrix
         )
 
+        if catalog_version == "v4_1":
+            assert result["spectral_summary"] is not None
+
+            spectral_summary = result[
+                "spectral_summary"
+            ]
+
+            assert (
+                spectral_summary["selected_area_count"]
+                == 1
+            )
+            assert (
+                spectral_summary["complete_feature_count"]
+                == 1
+            )
+            assert (
+                spectral_summary["mean_observations"]
+                is not None
+            )
+            assert set(
+                spectral_summary["mean_indices"]
+            ) == {
+                "ndvi_median",
+                "evi_median",
+                "ndmi_median",
+                "bsi_median",
+            }
+
+            result_area = result["areas"][0]
+
+            assert result_area["spectral_quality"]
+            assert result_area["spectral_indices"]
+            assert (
+                result_area["spectral_quality"][
+                    "complete_features"
+                ]
+                is True
+            )
+        else:
+            assert result["spectral_summary"] is None
+            assert (
+                result["areas"][0]["spectral_quality"]
+                is None
+            )
+            assert (
+                result["areas"][0]["spectral_indices"]
+                is None
+            )
+
         limitations_text = " ".join(
             result["limitations"]
         )
