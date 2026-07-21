@@ -506,3 +506,150 @@ def test_operational_summary_separates_domains():
     assert "stato vegetativo" in reliability_text
     assert "migliori o peggiori" in comparison_text
 
+def test_worker_completes_multi_area_job():
+    catalog_response = client.get(
+        "/areas",
+        params={
+            "entity_id": "calabria_demo",
+            "limit": 2,
+        },
+    )
+
+    assert catalog_response.status_code == 200
+
+    catalog_data = catalog_response.json()
+    catalog_items = catalog_data.get("items") or []
+
+    assert len(catalog_items) >= 2
+
+    area_ids = [
+        str(item["area_id"])
+        for item in catalog_items[:2]
+    ]
+
+    create_response = client.post(
+        "/jobs/batch",
+        json={
+            "entity_id": "calabria_demo",
+            "area_ids": area_ids,
+        },
+    )
+
+    assert create_response.status_code == 202
+
+    job_id = create_response.json()["job_id"]
+
+    try:
+        processed = run_once()
+
+        assert processed is True
+
+        status_response = client.get(
+            f"/jobs/{job_id}"
+        )
+
+        assert status_response.status_code == 200
+
+        data = status_response.json()
+
+        assert data["status"] == "done"
+        assert data["error"] is None
+        assert data["result"] is not None
+
+        result = data["result"]
+
+        assert (
+            result["summary"]["selected_area_count"]
+            == len(area_ids)
+        )
+        assert (
+            result["summary"]["snapshot_area_count"]
+            == len(area_ids)
+        )
+        assert len(result["areas"]) == len(area_ids)
+
+        result_area_ids = {
+            str(area["area_id"])
+            for area in result["areas"]
+        }
+
+        assert result_area_ids == set(area_ids)
+
+        catalog_version = os.getenv(
+            "AREA_CATALOG_VERSION",
+            "v3",
+        ).strip().lower()
+
+        if catalog_version == "v4_1":
+            assert result["spectral_summary"] is not None
+            assert result["relative_comparison"] is not None
+            assert result["operational_summary"] is not None
+
+            comparison = result[
+                "relative_comparison"
+            ]
+            operational = result[
+                "operational_summary"
+            ]
+
+            assert (
+                comparison["comparable_area_count"]
+                >= 2
+            )
+            assert comparison["status"] == "available"
+            assert comparison["indices"]
+
+            assert (
+                operational["relative_comparison"][
+                    "status"
+                ]
+                == "available"
+            )
+            assert (
+                operational["relative_comparison"][
+                    "comparable_area_count"
+                ]
+                >= 2
+            )
+            assert (
+                operational["relative_comparison"][
+                    "available_indices"
+                ]
+            )
+
+            positioned_areas = [
+                area
+                for area in result["areas"]
+                if area["relative_position"]
+                is not None
+            ]
+
+            assert len(positioned_areas) >= 2
+
+            for area in positioned_areas:
+                for position in (
+                    area["relative_position"].values()
+                ):
+                    assert (
+                        0.0
+                        <= position[
+                            "relative_position_0_1"
+                        ]
+                        <= 1.0
+                    )
+                    assert position["rank_desc"] >= 1
+                    assert (
+                        position["compared_area_count"]
+                        >= 2
+                    )
+        else:
+            assert result["spectral_summary"] is None
+            assert result["relative_comparison"] is None
+            assert result["operational_summary"] is None
+
+            for area in result["areas"]:
+                assert area["spectral_quality"] is None
+                assert area["spectral_indices"] is None
+                assert area["relative_position"] is None
+    finally:
+        delete_job(job_id)
