@@ -354,6 +354,197 @@ def build_relative_comparison(
     }, area_positions
 
 
+def build_operational_summary(
+    job: dict[str, Any],
+    areas: list[dict[str, Any]],
+    spectral_summary: dict[str, Any] | None,
+    relative_comparison: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """
+    Costruisce un riepilogo descrittivo del job v4.1.
+
+    Non genera un indice composito e non interpreta gli indici
+    spettrali come diagnosi agronomica assoluta.
+    """
+    feature_matrix_version = job.get(
+        "feature_matrix_version"
+    )
+
+    if not feature_matrix_version:
+        return None
+
+    selected_area_count = len(areas)
+
+    reliability_class_counts: dict[str, int] = {}
+
+    reliability_scores = []
+
+    for area in areas:
+        class_name = str(
+            area.get("reliability_class") or "unknown"
+        )
+
+        reliability_class_counts[class_name] = (
+            reliability_class_counts.get(
+                class_name,
+                0,
+            )
+            + 1
+        )
+
+        score = safe_float(
+            area.get("reliability_score")
+        )
+
+        if score is not None:
+            reliability_scores.append(score)
+
+    mean_reliability_score = mean_or_none(
+        reliability_scores
+    )
+
+    complete_feature_count = 0
+    usable_baseline_count = 0
+    not_usable_baseline_count = 0
+    spectral_status_counts: dict[str, int] = {}
+
+    if spectral_summary is not None:
+        complete_feature_count = int(
+            spectral_summary.get(
+                "complete_feature_count",
+                0,
+            )
+        )
+        usable_baseline_count = int(
+            spectral_summary.get(
+                "usable_baseline_count",
+                0,
+            )
+        )
+        not_usable_baseline_count = int(
+            spectral_summary.get(
+                "not_usable_baseline_count",
+                0,
+            )
+        )
+        spectral_status_counts = dict(
+            spectral_summary.get(
+                "spectral_status_counts",
+                {},
+            )
+        )
+
+    comparison_status = "not_available"
+    comparable_area_count = 0
+    available_indices: list[str] = []
+
+    if relative_comparison is not None:
+        comparison_status = str(
+            relative_comparison.get(
+                "status",
+                "not_available",
+            )
+        )
+        comparable_area_count = int(
+            relative_comparison.get(
+                "comparable_area_count",
+                0,
+            )
+        )
+        available_indices = sorted(
+            relative_comparison.get(
+                "indices",
+                {}
+            ).keys()
+        )
+
+    messages = [
+        (
+            f"Il job comprende {selected_area_count} "
+            "aree selezionate."
+        ),
+        (
+            f"Le feature spettrali complete sono disponibili "
+            f"per {complete_feature_count} aree."
+        ),
+        (
+            f"Le feature utilizzabili come baseline regionale "
+            f"sono disponibili per {usable_baseline_count} aree."
+        ),
+    ]
+
+    if comparison_status == "available":
+        messages.append(
+            (
+                "Il confronto spettrale relativo e disponibile "
+                f"per {comparable_area_count} aree e "
+                f"{len(available_indices)} indici."
+            )
+        )
+    elif comparison_status == "insufficient_areas":
+        messages.append(
+            (
+                "Il confronto relativo non e disponibile: "
+                "sono necessarie almeno due aree con feature "
+                "spettrali complete."
+            )
+        )
+    else:
+        messages.append(
+            (
+                "Il confronto relativo non e disponibile per "
+                "insufficienza dei dati confrontabili."
+            )
+        )
+
+    return {
+        "status": "available",
+        "scope": "selected_job_areas",
+        "catalog_reliability": {
+            "model_version": job.get(
+                "model_version"
+            ),
+            "mean_score": mean_reliability_score,
+            "class_counts": reliability_class_counts,
+            "interpretation": (
+                "La probabilita di affidabilita descrive la "
+                "compatibilita del candidato con il catalogo "
+                "olivicolo regionale; non descrive lo stato "
+                "vegetativo della coltura."
+            ),
+        },
+        "spectral_availability": {
+            "feature_matrix_version": (
+                feature_matrix_version
+            ),
+            "selected_area_count": selected_area_count,
+            "complete_feature_count": (
+                complete_feature_count
+            ),
+            "usable_baseline_count": (
+                usable_baseline_count
+            ),
+            "not_usable_baseline_count": (
+                not_usable_baseline_count
+            ),
+            "status_counts": spectral_status_counts,
+        },
+        "relative_comparison": {
+            "status": comparison_status,
+            "comparable_area_count": (
+                comparable_area_count
+            ),
+            "available_indices": available_indices,
+            "interpretation": (
+                "Le posizioni sono relative esclusivamente alle "
+                "aree incluse nel job e non identificano "
+                "automaticamente condizioni migliori o peggiori."
+            ),
+        },
+        "messages": messages,
+    }
+
+
 def build_catalog_screening_result(
     job: dict[str, Any],
 ) -> dict[str, Any]:
@@ -486,6 +677,13 @@ def build_catalog_screening_result(
 
     spectral_summary = build_spectral_summary(areas)
 
+    operational_summary = build_operational_summary(
+        job=job,
+        areas=areas,
+        spectral_summary=spectral_summary,
+        relative_comparison=relative_comparison,
+    )
+
     return {
         "result_type": "catalog_screening_diagnostic_v1",
         "status": "completed",
@@ -521,12 +719,22 @@ def build_catalog_screening_result(
             if relative_comparison is not None
             else {}
         ),
+        **(
+            {
+                "operational_summary": (
+                    operational_summary
+                )
+            }
+            if operational_summary is not None
+            else {}
+        ),
         "areas": result_areas,
         "limitations": [
             (
-                "Risultato diagnostico basato sui metadati del "
-                "catalogo; non include ancora elaborazioni "
-                "satellitari."
+                "Il risultato usa metadati del catalogo e, per "
+                "v4.1, feature spettrali regionali precalcolate. "
+                "Non esegue una nuova elaborazione satellitare "
+                "temporale sul singolo appezzamento."
             ),
             (
                 "Il modello regionale di affidabilità "

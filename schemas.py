@@ -330,6 +330,50 @@ class CatalogRelativeComparison(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
+class CatalogOperationalReliability(BaseModel):
+    model_version: Optional[str] = None
+    mean_score: Optional[float] = None
+    class_counts: dict[str, int]
+    interpretation: str
+
+    model_config = ConfigDict(extra="allow")
+
+
+class CatalogOperationalSpectralAvailability(BaseModel):
+    feature_matrix_version: str
+    selected_area_count: int
+    complete_feature_count: int
+    usable_baseline_count: int
+    not_usable_baseline_count: int
+    status_counts: dict[str, int]
+
+    model_config = ConfigDict(extra="allow")
+
+
+class CatalogOperationalRelativeComparison(BaseModel):
+    status: str
+    comparable_area_count: int
+    available_indices: list[str]
+    interpretation: str
+
+    model_config = ConfigDict(extra="allow")
+
+
+class CatalogOperationalSummary(BaseModel):
+    status: str
+    scope: str
+    catalog_reliability: CatalogOperationalReliability
+    spectral_availability: (
+        CatalogOperationalSpectralAvailability
+    )
+    relative_comparison: (
+        CatalogOperationalRelativeComparison
+    )
+    messages: list[str]
+
+    model_config = ConfigDict(extra="allow")
+
+
 class CatalogScreeningArea(BaseModel):
     area_id: str
     area_ha: Optional[float] = None
@@ -361,6 +405,9 @@ class CatalogScreeningResult(BaseModel):
     spectral_summary: Optional[CatalogSpectralSummary] = None
     relative_comparison: Optional[
         CatalogRelativeComparison
+    ] = None
+    operational_summary: Optional[
+        CatalogOperationalSummary
     ] = None
     areas: list[CatalogScreeningArea]
     limitations: list[str]

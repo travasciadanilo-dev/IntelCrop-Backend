@@ -6,7 +6,9 @@ from fastapi.testclient import TestClient
 from main import app
 from routers.areas import get_connection
 from scripts.process_analysis_jobs_v1 import (
+    build_operational_summary,
     build_relative_comparison,
+    build_spectral_summary,
     run_once,
 )
 
@@ -177,9 +179,47 @@ def test_worker_completes_queued_job():
                 result_area["relative_position"]
                 is None
             )
+
+            operational_summary = result[
+                "operational_summary"
+            ]
+
+            assert operational_summary is not None
+            assert (
+                operational_summary["scope"]
+                == "selected_job_areas"
+            )
+            assert (
+                operational_summary[
+                    "spectral_availability"
+                ]["selected_area_count"]
+                == 1
+            )
+            assert (
+                operational_summary[
+                    "spectral_availability"
+                ]["complete_feature_count"]
+                == 1
+            )
+            assert (
+                operational_summary[
+                    "relative_comparison"
+                ]["status"]
+                == "insufficient_areas"
+            )
+            assert (
+                operational_summary[
+                    "relative_comparison"
+                ]["available_indices"]
+                == []
+            )
+            assert (
+                operational_summary["messages"]
+            )
         else:
             assert result["spectral_summary"] is None
             assert result["relative_comparison"] is None
+            assert result["operational_summary"] is None
             assert (
                 result["areas"][0]["spectral_quality"]
                 is None
@@ -199,6 +239,10 @@ def test_worker_completes_queued_job():
         )
         assert (
             "\u00e8 sperimentale"
+            in limitations_text
+        )
+        assert (
+            "nuova elaborazione satellitare temporale"
             in limitations_text
         )
     finally:
@@ -356,4 +400,109 @@ def test_relative_comparison_equal_values():
         ]
         == 1
     )
+
+def test_operational_summary_separates_domains():
+    areas = [
+        {
+            "area_id": "area-a",
+            "feature_matrix_version": "matrix-v1",
+            "reliability_score": 0.90,
+            "reliability_class": "very_high",
+            "has_complete_spectral_features": True,
+            "usable_for_baseline_spectral": True,
+            "spectral_status": "strong",
+            "n_observations": 120,
+            "ndvi_median": 0.40,
+            "evi_median": 0.20,
+            "ndmi_median": 0.10,
+            "bsi_median": -0.05,
+        },
+        {
+            "area_id": "area-b",
+            "feature_matrix_version": "matrix-v1",
+            "reliability_score": 0.70,
+            "reliability_class": "compatible",
+            "has_complete_spectral_features": True,
+            "usable_for_baseline_spectral": True,
+            "spectral_status": "strong",
+            "n_observations": 110,
+            "ndvi_median": 0.60,
+            "evi_median": 0.30,
+            "ndmi_median": 0.00,
+            "bsi_median": 0.05,
+        },
+    ]
+
+    spectral_summary = build_spectral_summary(
+        areas
+    )
+    relative_comparison, _ = (
+        build_relative_comparison(areas)
+    )
+
+    summary = build_operational_summary(
+        job={
+            "model_version": "model-v1",
+            "feature_matrix_version": "matrix-v1",
+        },
+        areas=areas,
+        spectral_summary=spectral_summary,
+        relative_comparison=relative_comparison,
+    )
+
+    assert summary is not None
+
+    assert (
+        summary["catalog_reliability"]["mean_score"]
+        == 0.8
+    )
+    assert (
+        summary["catalog_reliability"][
+            "class_counts"
+        ]
+        == {
+            "very_high": 1,
+            "compatible": 1,
+        }
+    )
+
+    assert (
+        summary["spectral_availability"][
+            "complete_feature_count"
+        ]
+        == 2
+    )
+    assert (
+        summary["spectral_availability"][
+            "usable_baseline_count"
+        ]
+        == 2
+    )
+
+    assert (
+        summary["relative_comparison"]["status"]
+        == "available"
+    )
+    assert (
+        summary["relative_comparison"][
+            "available_indices"
+        ]
+        == [
+            "bsi_median",
+            "evi_median",
+            "ndmi_median",
+            "ndvi_median",
+        ]
+    )
+
+    reliability_text = summary[
+        "catalog_reliability"
+    ]["interpretation"]
+
+    comparison_text = summary[
+        "relative_comparison"
+    ]["interpretation"]
+
+    assert "stato vegetativo" in reliability_text
+    assert "migliori o peggiori" in comparison_text
 
