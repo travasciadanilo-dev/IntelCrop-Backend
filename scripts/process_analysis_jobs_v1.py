@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
+import time
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -859,11 +861,12 @@ def process_job(job: dict[str, Any]) -> None:
     )
 
 
-def run_once() -> bool:
+def run_once(log_empty_queue: bool = True) -> bool:
     job = claim_next_job()
 
     if not job:
-        LOGGER.info("Nessun job queued disponibile.")
+        if log_empty_queue:
+            LOGGER.info("Nessun job queued disponibile.")
         return False
 
     job_id = str(job["job_id"])
@@ -899,6 +902,33 @@ def run_loop(max_jobs: int) -> int:
     return processed
 
 
+def run_watch_loop(
+    poll_seconds: float,
+    max_jobs: int | None = None,
+) -> int:
+    processed = 0
+
+    LOGGER.info(
+        "Worker persistente avviato | poll_seconds=%s | max_jobs=%s",
+        poll_seconds,
+        max_jobs if max_jobs is not None else "illimitato",
+    )
+
+    try:
+        while max_jobs is None or processed < max_jobs:
+            completed = run_once(log_empty_queue=False)
+
+            if completed:
+                processed += 1
+                continue
+
+            time.sleep(poll_seconds)
+    except KeyboardInterrupt:
+        LOGGER.info("Arresto worker richiesto dall'utente.")
+
+    return processed
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
@@ -910,7 +940,28 @@ def parse_args() -> argparse.Namespace:
         "--max-jobs",
         type=int,
         default=1,
-        help="Numero massimo di job da processare.",
+        help=(
+            "Numero massimo di job da processare. "
+            "In modalit? --watch, usare 0 per nessun limite."
+        ),
+    )
+
+    parser.add_argument(
+        "--watch",
+        action="store_true",
+        help=(
+            "Mantiene il worker attivo e controlla periodicamente "
+            "la presenza di nuovi job."
+        ),
+    )
+
+    parser.add_argument(
+        "--poll-seconds",
+        type=float,
+        default=float(
+            os.getenv("ANALYSIS_JOB_POLL_SECONDS", "3")
+        ),
+        help="Secondi tra due controlli della coda.",
     )
 
     return parser.parse_args()
@@ -920,10 +971,25 @@ def main() -> int:
     configure_logging()
     args = parse_args()
 
-    if args.max_jobs < 1:
-        raise ValueError("--max-jobs deve essere almeno 1.")
+    if args.max_jobs < 0:
+        raise ValueError("--max-jobs non pu? essere negativo.")
 
-    processed = run_loop(args.max_jobs)
+    if args.poll_seconds <= 0:
+        raise ValueError("--poll-seconds deve essere maggiore di 0.")
+
+    if args.watch:
+        max_jobs = args.max_jobs or None
+        processed = run_watch_loop(
+            poll_seconds=args.poll_seconds,
+            max_jobs=max_jobs,
+        )
+    else:
+        if args.max_jobs < 1:
+            raise ValueError(
+                "--max-jobs deve essere almeno 1 senza --watch."
+            )
+
+        processed = run_loop(args.max_jobs)
 
     LOGGER.info("Job completati in questa esecuzione: %s", processed)
     return 0
